@@ -132,7 +132,7 @@ useEffect(() => {
 
 if (!profileUser) {
   return (
-    <div className="min-h-screen bg-white dark:bg-black p-4 text-black dark:text-white">
+    <div className="min-h-screen pt-16 bg-white dark:bg-black p-4 text-black dark:text-white">
       <div className="flex gap-6 items-start animate-pulse">
         <div className="w-28 h-28 rounded-full bg-gray-300 dark:bg-gray-700" />
         <div className="flex-1 space-y-4">
@@ -159,6 +159,8 @@ if (!profileUser) {
     </div>
   );
 }
+
+
 
 
 
