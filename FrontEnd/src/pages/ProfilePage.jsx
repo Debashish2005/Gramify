@@ -132,16 +132,16 @@ useEffect(() => {
 
 if (!profileUser) {
   return (
-    <div className="min-h-screen bg-black p-4 text-white">
+    <div className="min-h-screen bg-white dark:bg-black p-4 text-black dark:text-white">
       <div className="flex gap-6 items-start animate-pulse">
-        <div className="w-28 h-28 rounded-full bg-gray-700" />
+        <div className="w-28 h-28 rounded-full bg-gray-300 dark:bg-gray-700" />
         <div className="flex-1 space-y-4">
-          <div className="h-5 w-1/3 bg-gray-700 rounded" />
-          <div className="h-4 w-1/2 bg-gray-700 rounded" />
+          <div className="h-5 w-1/3 bg-gray-300 dark:bg-gray-700 rounded" />
+          <div className="h-4 w-1/2 bg-gray-300 dark:bg-gray-700 rounded" />
           <div className="flex gap-4 text-sm">
-            <div className="h-4 w-16 bg-gray-700 rounded" />
-            <div className="h-4 w-20 bg-gray-700 rounded" />
-            <div className="h-4 w-20 bg-gray-700 rounded" />
+            <div className="h-4 w-16 bg-gray-300 dark:bg-gray-700 rounded" />
+            <div className="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded" />
+            <div className="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded" />
           </div>
         </div>
       </div>
@@ -152,13 +152,14 @@ if (!profileUser) {
           .map((_, i) => (
             <div
               key={i}
-              className="w-full aspect-square bg-gray-700 rounded-md"
+              className="w-full aspect-square bg-gray-300 dark:bg-gray-700 rounded-md"
             />
           ))}
       </div>
     </div>
   );
 }
+
 
 
 
