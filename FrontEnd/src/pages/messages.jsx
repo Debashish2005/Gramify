@@ -18,6 +18,8 @@ export default function Messages() {
   const messagesEndRef = useRef(null);
   const [searchResults, setSearchResults] = useState([]);
   const [recentChats, setRecentChats] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+
   const navigate = useNavigate();
   const location = useLocation();
 useEffect(() => {
@@ -100,10 +102,13 @@ useEffect(() => {
 
   const fetchConversations = async () => {
     try {
-      const res = await api.get("/conversations");
+      setLoadingUsers(true);
+const res = await api.get("/conversations");
+
       setRecentChats(
   res.data.sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime))
 );
+setLoadingUsers(false);
 
     } catch (err) {
       console.error("Failed to load chats:", err);
@@ -162,8 +167,10 @@ useEffect(() => {
     if (!query.trim()) return setSearchResults([]);
 
     try {
+      setLoadingUsers(true);
       const res = await api.get(`/search-users?query=${query}`);
       setSearchResults(res.data.users);
+      setLoadingUsers(false);
     } catch (err) {
       console.error("Search failed:", err);
     }
@@ -209,44 +216,62 @@ useEffect(() => {
         </div>
 
         {/* Conversations */}
-        <div className="overflow-y-auto h-[calc(100vh-128px)]">
-          {searchQuery
-            ? searchResults.map((user) => (
-                <UserCard
-                  key={user._id}
-                  user={{
-                    userId: user._id,
-                    name: user.username,
-                    dp: user.dp || "https://via.placeholder.com/150",
-                  }}
-                  onClick={() =>
-                    loadMessages({
-                      userId: user._id,
-                      name: user.username,
-                      dp: user.dp || "https://via.placeholder.com/150",
-                    })
-                  }
-                />
-              ))
-            : recentChats.map((chat) => (
-                <UserCard
-                  key={chat.userId}
-                  user={{
-                    userId: chat.userId,
-                    name: chat.name,
-                    dp: chat.dp || "https://via.placeholder.com/150",
-                    lastMessage: chat.lastMessage,
-                  }}
-                  onClick={() =>
-                    loadMessages({
-                      userId: chat.userId,
-                      name: chat.name,
-                      dp: chat.dp || "https://via.placeholder.com/150",
-                    })
-                  }
-                />
-              ))}
+<div className="overflow-y-auto h-[calc(100vh-128px)] px-2">
+  {loadingUsers ? (
+    <div className="space-y-4 animate-pulse mt-4">
+      {[...Array(5)].map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-4 p-2 bg-white dark:bg-gray-800 rounded-md shadow"
+        >
+          <div className="w-12 h-12 bg-gray-300 dark:bg-gray-700 rounded-full" />
+          <div className="flex-1 space-y-2">
+            <div className="h-4 w-1/2 bg-gray-300 dark:bg-gray-700 rounded" />
+            <div className="h-3 w-1/3 bg-gray-300 dark:bg-gray-700 rounded" />
+          </div>
         </div>
+      ))}
+    </div>
+  ) : searchQuery ? (
+    searchResults.map((user) => (
+      <UserCard
+        key={user._id}
+        user={{
+          userId: user._id,
+          name: user.username,
+          dp: user.dp || "https://via.placeholder.com/150",
+        }}
+        onClick={() =>
+          loadMessages({
+            userId: user._id,
+            name: user.username,
+            dp: user.dp || "https://via.placeholder.com/150",
+          })
+        }
+      />
+    ))
+  ) : (
+    recentChats.map((chat) => (
+      <UserCard
+        key={chat.userId}
+        user={{
+          userId: chat.userId,
+          name: chat.name,
+          dp: chat.dp || "https://via.placeholder.com/150",
+          lastMessage: chat.lastMessage,
+        }}
+        onClick={() =>
+          loadMessages({
+            userId: chat.userId,
+            name: chat.name,
+            dp: chat.dp || "https://via.placeholder.com/150",
+          })
+        }
+      />
+    ))
+  )}
+</div>
+
       </div>
 
       {/* Right Side - Chat View */}
