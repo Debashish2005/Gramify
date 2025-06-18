@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 
 export default function SearchPage() {
     const navigate = useNavigate();
+    const [searchLoading, setSearchLoading] = useState(false);
 
   useEffect(() => {
     const handleResize = () => {
@@ -39,27 +40,30 @@ export default function SearchPage() {
   }
 }, []);
 
-  useEffect(() => {
-    const delayDebounce = setTimeout(() => {
-      const fetchUsers = async () => {
-        if (!searchQuery.trim()) {
-          setSearchResults([]);
-          return;
-        }
+ useEffect(() => {
+  const delayDebounce = setTimeout(() => {
+    const fetchUsers = async () => {
+      if (!searchQuery.trim()) {
+        setSearchResults([]);
+        return;
+      }
 
-        try {
-          const res = await api.get(`/search-users?query=${searchQuery}`);
-          setSearchResults(res.data.users);
-        } catch (err) {
-          console.error("Search failed", err);
-        }
-      };
+      setSearchLoading(true); // Start shimmer
+      try {
+        const res = await api.get(`/search-users?query=${searchQuery}`);
+        setSearchResults(res.data.users);
+      } catch (err) {
+        console.error("Search failed", err);
+      }
+      setSearchLoading(false); // End shimmer
+    };
 
-      fetchUsers();
-    }, 300);
+    fetchUsers();
+  }, 300);
 
-    return () => clearTimeout(delayDebounce);
-  }, [searchQuery]);
+  return () => clearTimeout(delayDebounce);
+}, [searchQuery]);
+
   const [recentSearches, setRecentSearches] = useState([]);
 
   // Load recent searches on mount
@@ -135,33 +139,53 @@ export default function SearchPage() {
 )}
 
       {/* Results */}
-      {searchResults.length > 0 && (
-        <div className="space-y-2">
-          {searchResults.map((user) => (
-            <Link
-              key={user._id}
-              to={`/profile/${user.username}`}
-              className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-        onClick={() => {
-  saveSearch(user.username); // Save the clicked result
-  setSearchQuery("");
-  setSearchResults([]);
-}}
-
-            >
-              <img
-                src={user.dp || "/default-avatar.png"}
-                alt={user.username}
-                className="w-10 h-10 rounded-full object-cover"
-              />
-              <div>
-                <div className="font-semibold text-sm text-gray-900 dark:text-white">{user.username}</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">{user.name}</div>
-              </div>
-            </Link>
-          ))}
+{searchLoading ? (
+  <div className="space-y-4 animate-pulse">
+    {[...Array(5)].map((_, i) => (
+      <div
+        key={i}
+        className="flex items-center gap-3 p-2 rounded-md bg-gray-100 dark:bg-gray-800"
+      >
+        <div className="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-600" />
+        <div className="flex-1 space-y-1">
+          <div className="h-4 w-1/3 bg-gray-300 dark:bg-gray-600 rounded" />
+          <div className="h-3 w-1/4 bg-gray-300 dark:bg-gray-600 rounded" />
         </div>
-      )}
+      </div>
+    ))}
+  </div>
+) : (
+  searchResults.length > 0 && (
+    <div className="space-y-2">
+      {searchResults.map((user) => (
+        <Link
+          key={user._id}
+          to={`/profile/${user.username}`}
+          className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+          onClick={() => {
+            saveSearch(user.username);
+            setSearchQuery("");
+            setSearchResults([]);
+          }}
+        >
+          <img
+            src={user.dp || "/default-avatar.png"}
+            alt={user.username}
+            className="w-10 h-10 rounded-full object-cover"
+          />
+          <div>
+            <div className="font-semibold text-sm text-gray-900 dark:text-white">
+              {user.username}
+            </div>
+            <div className="text-xs text-gray-600 dark:text-gray-400">
+              {user.name}
+            </div>
+          </div>
+        </Link>
+      ))}
+    </div>
+  )
+)}
 
 
     </div>
