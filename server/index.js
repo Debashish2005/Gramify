@@ -176,12 +176,13 @@ app.post('/login', async (req, res) => {
       { expiresIn: "1d" }
     );
 
-    res.cookie('token', token, {
+res.cookie('token', token, {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production', // only over HTTPS
-  sameSite: 'Strict',
-  maxAge: 24 * 60 * 60 * 1000 // 1 day
+  secure: process.env.NODE_ENV === 'production', // true for HTTPS
+  sameSite: 'None',  // allow cross-site cookies
+  maxAge: 24 * 60 * 60 * 1000
 });
+
 res.status(200).json({ message: "Login successful" });
 
 
