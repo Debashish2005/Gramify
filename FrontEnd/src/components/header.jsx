@@ -37,6 +37,8 @@ export default function HeaderNav() {
   const [isPostModalOpen, setIsPostModalOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 const [searchResults, setSearchResults] = useState([]);
+const [loading, setLoading] = useState(false);
+
 
  
   React.useEffect(() => {
@@ -117,22 +119,28 @@ useEffect(() => {
     const fetchUsers = async () => {
       if (!searchQuery.trim()) {
         setSearchResults([]);
+        setLoading(false);
         return;
       }
+
+      setLoading(true); // start loading
 
       try {
         const res = await api.get(`/search-users?query=${searchQuery}`);
         setSearchResults(res.data.users);
       } catch (err) {
         console.error("Search failed", err);
+      } finally {
+        setLoading(false); // done loading
       }
     };
 
     fetchUsers();
-  }, 300); // debounce input by 300ms
+  }, 300);
 
   return () => clearTimeout(delayDebounce);
 }, [searchQuery]);
+
 
 
   return (
@@ -160,6 +168,20 @@ useEffect(() => {
   onChange={(e) => setSearchQuery(e.target.value)}
   className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 dark:border-gray-700 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-black dark:text-white"
 />
+{loading && (
+  <div className="absolute top-10 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 p-2 space-y-2 animate-pulse">
+    {Array(3).fill(0).map((_, i) => (
+      <div key={i} className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-700"></div>
+        <div className="flex-1 space-y-1">
+          <div className="h-3 w-1/2 bg-gray-300 dark:bg-gray-700 rounded"></div>
+          <div className="h-2 w-1/3 bg-gray-300 dark:bg-gray-700 rounded"></div>
+        </div>
+      </div>
+    ))}
+  </div>
+)}
+
 {searchResults.length > 0 && (
   <div className="absolute top-10 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50">
     {searchResults.map((user) => (
