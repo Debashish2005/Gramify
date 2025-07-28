@@ -38,3 +38,8 @@
 - JWT for Authentication
 
 ---
+
+## 🎥 Demo Video
+
+[![Watch the demo](https://img.youtube.com/vi/0SYHT9Abmgs/hqdefault.jpg)](https://youtu.be/0SYHT9Abmgs)
+
