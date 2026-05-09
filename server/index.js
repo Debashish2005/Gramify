@@ -421,12 +421,16 @@ app.post("/feed/:postId/react", auth, async (req, res) => {
   const { type } = req.body;
   const { postId } = req.params;
   const userId = req.user.id;
+  const types = ["like", "love", "smile", "sad", "angry"];
+
+  if (!types.includes(type)) {
+    return res.status(400).json({ error: "Invalid reaction type" });
+  }
 
   const post = await Post.findById(postId);
   if (!post) return res.status(404).json({ error: "Post not found" });
 
   // Ensure reactions object exists
-  const types = ["like", "love", "smile", "sad", "angry"];
   types.forEach((t) => {
     post.reactions[t] = post.reactions[t] || [];
     post.reactions[t] = post.reactions[t].filter(

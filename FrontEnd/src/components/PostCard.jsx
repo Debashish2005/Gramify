@@ -19,8 +19,9 @@ import ConfirmModal from "./ConfirmModal";
 
 
 const ReactionIcons = [
+  { icon: <ThumbsUp className="text-blue-500" />, label: "like" },
   { icon: <Heart className="text-red-500" />, label: "love" },
-  { icon: <Laugh className="text-yellow-400" />, label: "haha" },
+  { icon: <Laugh className="text-yellow-400" />, label: "smile" },
   { icon: <Frown className="text-blue-400" />, label: "sad" },
   { icon: <Angry className="text-red-700" />, label: "angry" },
 ];
@@ -80,7 +81,7 @@ export default function PostCard({ post }) {
   const iconMap = {
     like: <ThumbsUp className="text-blue-500 w-4 h-4" />,
     love: <Heart className="text-red-500 w-4 h-4" />,
-    haha: <Laugh className="text-yellow-400 w-4 h-4" />,
+    smile: <Laugh className="text-yellow-400 w-4 h-4" />,
     sad: <Frown className="text-blue-400 w-4 h-4" />,
     angry: <Angry className="text-red-700 w-4 h-4" />,
   };
