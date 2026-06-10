@@ -18,7 +18,18 @@ const MessageSchema = new mongoose.Schema({
   },
   content: {
     type: String,
-    required: true,
+    default: "",
+    trim: true,
+  },
+  messageType: {
+    type: String,
+    enum: ["text", "shared_post"],
+    default: "text",
+  },
+  sharedPost: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Post",
+    default: null,
   },
   isRead: {
     type: Boolean,

@@ -3,6 +3,8 @@ import {
   ArrowLeft,
   CheckCheck,
   ChevronLeft,
+  Clapperboard,
+  Image,
   MessageCircle,
   Search,
   Send,
@@ -510,15 +512,19 @@ function MessageBubble({ message, isOwn, compact, showSeen }) {
   return (
     <div className={`flex flex-col ${isOwn ? "items-end" : "items-start"} ${compact ? "mb-1" : "mb-3"}`}>
       <div
-        className={`max-w-[84%] px-3.5 py-2.5 text-sm leading-5 sm:max-w-[70%] ${
+        className={`max-w-[84%] text-sm leading-5 sm:max-w-[70%] ${
           isOwn
             ? "rounded-2xl rounded-br-md bg-blue-600 text-white"
             : "rounded-2xl rounded-bl-md border border-black/[0.07] bg-white text-zinc-900 shadow-sm dark:border-white/[0.08] dark:bg-[#1b1e23] dark:text-white"
         }`}
       >
-        <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        {message.messageType === "shared_post" ? (
+          <SharedContentCard post={message.sharedPost} isOwn={isOwn} />
+        ) : (
+          <p className="whitespace-pre-wrap break-words px-3.5 py-2.5">{message.content}</p>
+        )}
         {!compact && (
-          <p className={`mt-1 text-right text-[10px] ${isOwn ? "text-blue-100" : "text-zinc-400"}`}>
+          <p className={`px-3.5 pb-2 text-right text-[10px] ${isOwn ? "text-blue-100" : "text-zinc-400"}`}>
             {time}
           </p>
         )}
@@ -530,5 +536,59 @@ function MessageBubble({ message, isOwn, compact, showSeen }) {
         </span>
       )}
     </div>
+  );
+}
+
+function SharedContentCard({ post, isOwn }) {
+  if (!post) {
+    return (
+      <div className="flex min-w-56 items-center gap-3 px-3.5 py-3">
+        <span className={`grid h-10 w-10 place-items-center rounded-md ${isOwn ? "bg-white/15" : "bg-zinc-100 dark:bg-white/[0.07]"}`}>
+          <Image className="h-5 w-5" />
+        </span>
+        <span>
+          <span className="block text-sm font-bold">Content unavailable</span>
+          <span className={`block text-xs ${isOwn ? "text-blue-100" : "text-zinc-500"}`}>
+            It may be private or deleted.
+          </span>
+        </span>
+      </div>
+    );
+  }
+
+  const media = post.media?.[0];
+  const isReel = post.contentType === "reel";
+  const target = isReel
+    ? `/reels?reel=${post._id}`
+    : `/profile/${post.user?.username}`;
+
+  return (
+    <Link to={target} className="block min-w-60 overflow-hidden rounded-2xl">
+      <div className="relative aspect-[4/3] max-h-52 bg-black">
+        {media?.type === "video" ? (
+          <video src={media.url} muted preload="metadata" className="h-full w-full object-cover" />
+        ) : media?.url ? (
+          <img src={media.url} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <div className="grid h-full place-items-center">
+            <Image className="h-8 w-8 text-white/60" />
+          </div>
+        )}
+        {isReel && (
+          <span className="absolute left-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-black/60 text-white">
+            <Clapperboard className="h-4 w-4" />
+          </span>
+        )}
+      </div>
+      <div className={`px-3.5 py-3 ${isOwn ? "bg-blue-700/45" : ""}`}>
+        <div className="flex items-center gap-2">
+          <img src={post.user?.dp || "/default.jpg"} alt="" className="avatar h-6 w-6" />
+          <span className="truncate text-xs font-bold">@{post.user?.username}</span>
+        </div>
+        <p className={`mt-2 line-clamp-2 text-xs ${isOwn ? "text-blue-50" : "text-zinc-600 dark:text-zinc-300"}`}>
+          {post.caption || (isReel ? "Watch this reel" : "View this post")}
+        </p>
+      </div>
+    </Link>
   );
 }

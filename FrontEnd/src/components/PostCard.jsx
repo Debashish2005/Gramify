@@ -17,6 +17,7 @@ import { Link } from "react-router-dom";
 import api from "../api/axios";
 import ConfirmModal from "./ConfirmModal";
 import PostFormModal from "./PostFormModal";
+import ShareContentModal from "./ShareContentModal";
 
 const reactionOptions = [
   { type: "like", label: "Like", Icon: ThumbsUp, color: "text-blue-600" },
@@ -85,6 +86,7 @@ export default function PostCard({ post, onDeleted }) {
   const [showMenu, setShowMenu] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => setPostData(post), [post]);
@@ -165,23 +167,6 @@ export default function PostCard({ post, onDeleted }) {
       toast.error("Could not add your comment");
     } finally {
       setCommenting(false);
-    }
-  };
-
-  const sharePost = async () => {
-    const shareData = {
-      title: `Post by ${postData.user?.username || "a Gramify user"}`,
-      text: postData.caption || "See this post on Gramify",
-      url: window.location.href,
-    };
-    try {
-      if (navigator.share) await navigator.share(shareData);
-      else {
-        await navigator.clipboard.writeText(window.location.href);
-        toast.success("Link copied");
-      }
-    } catch {
-      // Closing the native share sheet is not an error worth surfacing.
     }
   };
 
@@ -338,7 +323,7 @@ export default function PostCard({ post, onDeleted }) {
           <MessageCircle className="h-5 w-5" />
           Comment
         </button>
-        <button onClick={sharePost} className="btn-ghost w-full">
+        <button onClick={() => setShowShareModal(true)} className="btn-ghost w-full">
           <Share2 className="h-5 w-5" />
           Share
         </button>
@@ -417,6 +402,11 @@ export default function PostCard({ post, onDeleted }) {
         onClose={() => setShowReactionList(false)}
         reactions={reactionUsers}
         loading={loadingReactions}
+      />
+      <ShareContentModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        post={postData}
       />
     </article>
   );

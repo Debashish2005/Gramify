@@ -149,7 +149,9 @@ export default function RightSidebar() {
                           : "border border-black/[0.08] bg-white dark:border-white/[0.08] dark:bg-[#1b1e23]"
                       }`}
                     >
-                      {message.content}
+                      {message.messageType === "shared_post"
+                        ? `Shared a ${message.sharedPost?.contentType === "reel" ? "reel" : "post"}`
+                        : message.content}
                     </p>
                   </div>
                 );

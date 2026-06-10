@@ -172,6 +172,48 @@ function auth(req, res, next) {
 }
 
 // ✅ WebSocket logic
+function canViewPost(post, user) {
+  if (!post || !user) return false;
+  const ownerId = (post.user?._id || post.user).toString();
+  if (ownerId === user._id.toString()) return true;
+  if (post.visibility === "public") return true;
+  return (
+    post.visibility === "friends" &&
+    user.following.some((id) => id.toString() === ownerId)
+  );
+}
+
+function formatPost(post, userId) {
+  const userReaction = Object.entries(post.reactions || {}).find(
+    ([, users]) => users.some((uid) => uid.toString() === userId.toString())
+  )?.[0];
+
+  return {
+    _id: post._id,
+    user: post.user,
+    caption: post.caption,
+    contentType: post.contentType || "post",
+    media: post.media,
+    createdAt: post.createdAt,
+    visibility: post.visibility,
+    tags: post.tags,
+    reactions: {
+      like: post.reactions?.like?.length || 0,
+      love: post.reactions?.love?.length || 0,
+      smile: post.reactions?.smile?.length || 0,
+      sad: post.reactions?.sad?.length || 0,
+      angry: post.reactions?.angry?.length || 0,
+    },
+    userReaction: userReaction || null,
+    comments: (post.comments || []).map((comment) => ({
+      _id: comment._id,
+      text: comment.text,
+      createdAt: comment.createdAt,
+      user: comment.user,
+    })),
+  };
+}
+
 const onlineUsers = new Map();
 const socketUsers = new Map();
 
@@ -500,16 +542,24 @@ app.get("/me", auth, async (req, res) => {
 
 app.post("/post", auth, upload.array("media", 7), async (req, res) => {
   try {
-    const { caption, visibility, tags } = req.body;
+    const { caption, visibility, tags, contentType = "post" } = req.body;
 
     const media = req.files.map((file) => ({
       url: file.path, // Cloudinary URL
       type: file.mimetype.startsWith("video") ? "video" : "image",
     }));
 
+    if (!["post", "reel"].includes(contentType)) {
+      return res.status(400).json({ error: "Invalid content type" });
+    }
+    if (contentType === "reel" && (media.length !== 1 || media[0].type !== "video")) {
+      return res.status(400).json({ error: "A reel must contain exactly one video" });
+    }
+
     const newPost = new Post({
       user: req.user.id,
       caption,
+      contentType,
       visibility,
       tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
       media,
@@ -527,12 +577,18 @@ app.patch("/post/:id", auth, upload.array("media", 7), async (req, res) => {
     const postId = req.params.id;
     const userId = req.user.id;
 
-    const { caption, visibility, tags, existingMedia } = req.body;
+    const { caption, visibility, tags, existingMedia, contentType } = req.body;
 
     // Prepare update object
     const updateData = {};
     if (caption !== undefined) updateData.caption = caption;
     if (visibility !== undefined) updateData.visibility = visibility;
+    if (contentType !== undefined) {
+      if (!["post", "reel"].includes(contentType)) {
+        return res.status(400).json({ error: "Invalid content type" });
+      }
+      updateData.contentType = contentType;
+    }
     if (tags !== undefined) updateData.tags = tags
       .split(",")
       .map((tag) => tag.trim());
@@ -551,6 +607,14 @@ app.patch("/post/:id", auth, upload.array("media", 7), async (req, res) => {
       }));
 
       updateData.media = [...retainedMedia, ...uploadedMedia];
+    }
+
+    if (
+      updateData.contentType === "reel" &&
+      updateData.media &&
+      (updateData.media.length !== 1 || updateData.media[0].type !== "video")
+    ) {
+      return res.status(400).json({ error: "A reel must contain exactly one video" });
     }
 
     // Find and update post if owned by the user
@@ -586,6 +650,7 @@ app.get("/feed", auth, async (req, res) => {
 
     // ✅ Get posts based on visibility
     const posts = await Post.find({
+      contentType: { $ne: "reel" },
       $or: [
         { user: userId },
         { visibility: "public" },
@@ -609,6 +674,7 @@ app.get("/feed", auth, async (req, res) => {
     _id: post._id,
     user: post.user,
     caption: post.caption,
+    contentType: post.contentType || "post",
     media: post.media,
     createdAt: post.createdAt,
     visibility: post.visibility,
@@ -639,6 +705,66 @@ app.get("/feed", auth, async (req, res) => {
 });
 
 
+app.get("/reels", auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await UserModel.findById(userId).select("following");
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const followingIds = user.following.map((id) => id.toString());
+    const limit = Math.min(Math.max(Number(req.query.limit) || 12, 1), 30);
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const query = {
+      contentType: "reel",
+      "media.0.type": "video",
+      $or: [
+        { user: userId },
+        { visibility: "public" },
+        { visibility: "friends", user: { $in: followingIds } },
+      ],
+    };
+
+    const [reels, total] = await Promise.all([
+      Post.find(query)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate("user", "username name dp")
+        .populate("comments.user", "username name dp"),
+      Post.countDocuments(query),
+    ]);
+
+    res.json({
+      reels: reels.map((reel) => formatPost(reel, userId)),
+      hasMore: page * limit < total,
+    });
+  } catch (err) {
+    console.error("Reels error:", err);
+    res.status(500).json({ error: "Failed to load reels" });
+  }
+});
+
+
+app.get("/posts/:postId", auth, async (req, res) => {
+  try {
+    const [post, viewer] = await Promise.all([
+      Post.findById(req.params.postId)
+        .populate("user", "username name dp")
+        .populate("comments.user", "username name dp"),
+      UserModel.findById(req.user.id).select("following"),
+    ]);
+
+    if (!post || !viewer || !canViewPost(post, viewer)) {
+      return res.status(404).json({ error: "Content not available" });
+    }
+    res.json({ post: formatPost(post, req.user.id) });
+  } catch (err) {
+    console.error("Load content error:", err);
+    res.status(500).json({ error: "Could not load content" });
+  }
+});
+
+
 app.post("/feed/:postId/react", auth, async (req, res) => {
   const { type } = req.body;
   const { postId } = req.params;
@@ -658,6 +784,9 @@ app.post("/feed/:postId/react", auth, async (req, res) => {
 
   const post = await Post.findById(postId);
   if (!post) return res.status(404).json({ error: "Post not found" });
+  if (post.contentType === "reel" && type !== "love") {
+    return res.status(400).json({ error: "Reels support love reactions only" });
+  }
 
   const previousType = types.find((reactionType) =>
     (post.reactions[reactionType] || []).some(
@@ -682,7 +811,10 @@ app.post("/feed/:postId/react", auth, async (req, res) => {
     await createNotification(post.user, {
       type: "reaction",
       reactionType: nextType,
-      message: reactionMessages[nextType],
+      message:
+        post.contentType === "reel" && nextType === "love"
+          ? "loved your reel"
+          : reactionMessages[nextType],
       from: userId,
       post: post._id,
     });
@@ -748,7 +880,7 @@ app.post("/feed/:postId/comment", auth, async (req, res) => {
 
     await createNotification(post.user, {
       type: "comment",
-      message: "commented on your post",
+      message: post.contentType === "reel" ? "commented on your reel" : "commented on your post",
       from: userId,
       post: post._id,
     });
@@ -812,6 +944,7 @@ app.get("/my-posts", auth, async (req, res) => {
         _id: post._id,
         user: post.user,
         caption: post.caption,
+        contentType: post.contentType || "post",
         media: post.media,
         createdAt: post.createdAt,
         visibility: post.visibility,
@@ -1005,6 +1138,7 @@ app.get("/user-posts/:username", auth, async (req, res) => {
         _id: post._id,
         user: post.user,
         caption: post.caption,
+        contentType: post.contentType || "post",
         media: post.media,
         createdAt: post.createdAt,
         visibility: post.visibility,
@@ -1337,8 +1471,24 @@ app.get("/messages/:conversationId", auth, async (req, res) => {
       io.to(senderId).emit("messages-read", { conversationId, readAt });
     });
 
-    const messages = await Message.find({ conversationId }).sort({ createdAt: 1 });
-    res.json(messages);
+    const [messages, viewer] = await Promise.all([
+      Message.find({ conversationId })
+      .populate({
+        path: "sharedPost",
+        select: "caption contentType media user visibility",
+        populate: { path: "user", select: "username name dp" },
+      })
+      .sort({ createdAt: 1 }),
+      UserModel.findById(userId).select("following"),
+    ]);
+    const visibleMessages = messages.map((message) => {
+      const value = message.toObject();
+      if (value.sharedPost && !canViewPost(value.sharedPost, viewer)) {
+        value.sharedPost = null;
+      }
+      return value;
+    });
+    res.json(visibleMessages);
   } catch (err) {
     console.error("Fetch messages error:", err);
     res.status(500).json({ error: "Server error" });
@@ -1392,6 +1542,66 @@ app.post("/messages", auth, async (req, res) => {
 });
 
 
+app.post("/posts/:postId/share", auth, async (req, res) => {
+  try {
+    const from = req.user.id;
+    const { to } = req.body;
+    if (!to || to === from) {
+      return res.status(400).json({ error: "Choose another user" });
+    }
+
+    const [sender, recipient, post] = await Promise.all([
+      UserModel.findById(from).select("following"),
+      UserModel.findById(to).select("following"),
+      Post.findById(req.params.postId),
+    ]);
+
+    if (!sender || !recipient || !post) {
+      return res.status(404).json({ error: "User or content not found" });
+    }
+    if (!canViewPost(post, sender)) {
+      return res.status(403).json({ error: "This content is not available to share" });
+    }
+    if (!canViewPost(post, recipient)) {
+      return res.status(403).json({ error: "This person cannot view the content" });
+    }
+
+    let conversation = await Conversation.findOne({
+      participants: { $all: [from, to] },
+    });
+    if (!conversation) {
+      conversation = await Conversation.create({ participants: [from, to] });
+    }
+
+    let message = await Message.create({
+      conversationId: conversation._id,
+      from,
+      to,
+      messageType: "shared_post",
+      sharedPost: post._id,
+      content: "",
+    });
+
+    await Conversation.findByIdAndUpdate(conversation._id, {
+      lastMessage: message._id,
+      $inc: { [`unreadCounts.${to}`]: 1 },
+    });
+
+    message = await Message.findById(message._id).populate({
+      path: "sharedPost",
+      select: "caption contentType media user visibility",
+      populate: { path: "user", select: "username name dp" },
+    });
+
+    io.to(to).emit("receive-message", message);
+    res.status(201).json(message);
+  } catch (err) {
+    console.error("Share content error:", err);
+    res.status(500).json({ error: "Could not share this content" });
+  }
+});
+
+
 
 // GET /conversations
 app.get("/conversations", auth, async (req, res) => {
@@ -1403,7 +1613,8 @@ const conversations = await Conversation.find({
 })
   .populate({
     path: "lastMessage",
-    select: "content createdAt", // also fetch createdAt
+    select: "content messageType sharedPost createdAt",
+    populate: { path: "sharedPost", select: "contentType" },
   })
   .populate({
     path: "participants",
@@ -1424,7 +1635,10 @@ const conversations = await Conversation.find({
         dp: otherUser.dp,
         online: onlineUsers.has(otherUser._id.toString()),
         lastSeen: otherUser.lastSeen,
-        lastMessage: conv.lastMessage?.content || "No messages yet",
+        lastMessage:
+          conv.lastMessage?.messageType === "shared_post"
+            ? `Shared a ${conv.lastMessage.sharedPost?.contentType === "reel" ? "reel" : "post"}`
+            : conv.lastMessage?.content || "No messages yet",
         lastMessageTime: conv.lastMessage?.createdAt || null,
         unreadCount: conv.unreadCounts?.get?.(userId.toString()) || 0,
       };

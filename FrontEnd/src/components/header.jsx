@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import { Bell, Heart, Home, MessageCircle, Plus, Search, UserRound } from "lucide-react";
+import {
+  Bell,
+  Clapperboard,
+  Heart,
+  Home,
+  MessageCircle,
+  Plus,
+  Search,
+  UserRound,
+} from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import api from "../api/axios";
 import socket from "../socket";
@@ -138,6 +147,7 @@ export default function HeaderNav() {
   const profilePath = user ? `/profile/${user.username}` : "/profile";
   const desktopItems = [
     { to: "/dashboard", label: "Home", icon: Home, active: pathname === "/dashboard" },
+    { to: "/reels", label: "Reels", icon: Clapperboard, active: pathname === "/reels" },
     {
       to: "/notifications",
       label: "Activity",
@@ -157,9 +167,9 @@ export default function HeaderNav() {
 
   const mobileItems = [
     ...desktopItems.slice(0, 1),
-    { to: "/search", label: "Search", icon: Search, active: pathname === "/search" },
+    { to: "/reels", label: "Reels", icon: Clapperboard, active: pathname === "/reels" },
     { label: "Create", icon: Plus, onClick: () => setIsPostModalOpen(true) },
-    desktopItems[2],
+    desktopItems[3],
     {
       to: profilePath,
       label: "Profile",
@@ -259,19 +269,30 @@ export default function HeaderNav() {
             </Link>
           )}
 
-          <Link
-            to="/notifications"
-            className={`relative ml-auto grid h-10 w-10 place-items-center rounded-md md:hidden ${
-              pathname === "/notifications" ? "text-[#e23d58]" : ""
-            }`}
-            aria-label="Activity"
-          >
-            <Heart
-              className="h-6 w-6"
-              fill={pathname === "/notifications" ? "currentColor" : "none"}
-            />
-            <Badge count={unreadNotifications} />
-          </Link>
+          <div className="ml-auto flex items-center gap-1 md:hidden">
+            <Link
+              to="/search"
+              className={`grid h-10 w-10 place-items-center rounded-md ${
+                pathname === "/search" ? "text-[#e23d58]" : ""
+              }`}
+              aria-label="Search"
+            >
+              <Search className="h-5 w-5" />
+            </Link>
+            <Link
+              to="/notifications"
+              className={`relative grid h-10 w-10 place-items-center rounded-md ${
+                pathname === "/notifications" ? "text-[#e23d58]" : ""
+              }`}
+              aria-label="Activity"
+            >
+              <Heart
+                className="h-6 w-6"
+                fill={pathname === "/notifications" ? "currentColor" : "none"}
+              />
+              <Badge count={unreadNotifications} />
+            </Link>
+          </div>
         </div>
       </header>
 

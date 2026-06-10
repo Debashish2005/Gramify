@@ -11,6 +11,7 @@ const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const Notifications = lazy(() => import("./pages/notifications"));
 const SearchPage = lazy(() => import("./pages/SearchPage"));
 const Messages = lazy(() => import("./pages/messages"));
+const Reels = lazy(() => import("./pages/Reels"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 function RouteFallback() {
@@ -39,6 +40,7 @@ function App() {
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/messages" element={<Messages />} />
+          <Route path="/reels" element={<Reels />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>

@@ -13,6 +13,13 @@ const postSchema = new Schema(
 
     caption: { type: String, trim: true, maxlength: 1000 },
 
+    contentType: {
+      type: String,
+      enum: ["post", "reel"],
+      default: "post",
+      index: true,
+    },
+
     media: [
       {
         url: { type: String, required: true },

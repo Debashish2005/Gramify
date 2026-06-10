@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Globe2, ImagePlus, Lock, Users, X } from "lucide-react";
+import { Clapperboard, FileImage, Globe2, ImagePlus, Lock, Users, X } from "lucide-react";
 import api from "../api/axios";
 import EmojiTextArea from "./EmojiTextArea";
 
@@ -14,6 +14,7 @@ export default function PostFormModal({
   onClose,
   onSubmit,
   initialPostData = null,
+  defaultContentType = "post",
 }) {
   const [caption, setCaption] = useState("");
   const [media, setMedia] = useState([]);
@@ -21,10 +22,12 @@ export default function PostFormModal({
   const [tags, setTags] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [contentType, setContentType] = useState(defaultContentType);
 
   useEffect(() => {
     if (!isOpen) return;
     setCaption(initialPostData?.caption || "");
+    setContentType(initialPostData?.contentType || defaultContentType);
     setVisibility(initialPostData?.visibility || "public");
     setTags(initialPostData?.tags?.join(", ") || "");
     setMedia(
@@ -35,7 +38,7 @@ export default function PostFormModal({
       }))
     );
     setError("");
-  }, [initialPostData, isOpen]);
+  }, [defaultContentType, initialPostData, isOpen]);
 
   const close = () => {
     if (loading) return;
@@ -53,6 +56,14 @@ export default function PostFormModal({
     const combinedMedia = [...media, ...nextMedia];
     const imageCount = combinedMedia.filter((item) => item.type === "image").length;
     const videoCount = combinedMedia.filter((item) => item.type === "video").length;
+
+    if (
+      contentType === "reel" &&
+      (combinedMedia.length > 1 || combinedMedia.some((item) => item.type !== "video"))
+    ) {
+      setError("A reel needs one video.");
+      return;
+    }
 
     if (videoCount > 1) {
       setError("Choose one video at a time.");
@@ -82,6 +93,7 @@ export default function PostFormModal({
 
     const formData = new FormData();
     formData.append("caption", caption.trim());
+    formData.append("contentType", contentType);
     formData.append("visibility", visibility);
     formData.append("tags", tags);
     formData.append(
@@ -125,6 +137,36 @@ export default function PostFormModal({
         </header>
 
         <div className="space-y-5 p-4 sm:p-5">
+          {!initialPostData && (
+            <div className="grid grid-cols-2 rounded-md bg-[#f1f2f5] p-1 dark:bg-[#1b1e23]">
+              {[
+                { value: "post", label: "Post", Icon: FileImage },
+                { value: "reel", label: "Reel", Icon: Clapperboard },
+              ].map((option) => {
+                const ModeIcon = option.Icon;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      setContentType(option.value);
+                      setMedia([]);
+                      setError("");
+                    }}
+                    className={`flex min-h-10 items-center justify-center gap-2 rounded-md text-sm font-bold transition ${
+                      contentType === option.value
+                        ? "bg-white text-[#17181c] shadow-sm dark:bg-[#292c33] dark:text-white"
+                        : "text-zinc-500"
+                    }`}
+                  >
+                    <ModeIcon className="h-4 w-4" />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <EmojiTextArea
             value={caption}
             onChange={setCaption}
@@ -162,14 +204,18 @@ export default function PostFormModal({
                 <ImagePlus className="h-5 w-5" />
               </span>
               <span>
-                <span className="block text-sm font-bold">Add photos or video</span>
-                <span className="block text-xs text-zinc-500">Up to 6 images or 1 video</span>
+                <span className="block text-sm font-bold">
+                  {contentType === "reel" ? "Add reel video" : "Add photos or video"}
+                </span>
+                <span className="block text-xs text-zinc-500">
+                  {contentType === "reel" ? "One vertical video" : "Up to 6 images or 1 video"}
+                </span>
               </span>
             </span>
             <input
               type="file"
-              accept="image/*,video/*"
-              multiple
+              accept={contentType === "reel" ? "video/*" : "image/*,video/*"}
+              multiple={contentType !== "reel"}
               onChange={handleMediaChange}
               className="sr-only"
             />
@@ -229,7 +275,13 @@ export default function PostFormModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={loading || Boolean(error) || (!caption.trim() && media.length === 0)}
+            disabled={
+              loading ||
+              Boolean(error) ||
+              (!caption.trim() && media.length === 0) ||
+              (contentType === "reel" &&
+                (media.length !== 1 || media[0]?.type !== "video"))
+            }
             className="btn-primary min-w-28"
           >
             {loading ? "Saving..." : initialPostData ? "Save changes" : "Publish"}
