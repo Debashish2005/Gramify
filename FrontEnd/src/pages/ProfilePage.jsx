@@ -14,7 +14,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import api, { clearAuthToken } from "../api/axios";
 import EditProfileForm from "../components/EditProfileForm";
@@ -28,6 +28,7 @@ export default function ProfilePage() {
   const location = useLocation();
   const settingsRef = useRef(null);
   const galleryTouchStartX = useRef(null);
+  const connectionsRequestId = useRef(0);
   const [currentUser, setCurrentUser] = useState(null);
   const [profileUser, setProfileUser] = useState(null);
   const [posts, setPosts] = useState([]);
@@ -122,6 +123,15 @@ export default function ProfilePage() {
     return () => document.removeEventListener("mousedown", closeSettings);
   }, []);
 
+  useEffect(() => {
+    if (!connectionsType) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [connectionsType]);
+
   const isCurrentUser = currentUser?.username === profileUser?.username;
   const selectedPost =
     selectedPostIndex === null ? null : posts[selectedPostIndex];
@@ -165,6 +175,8 @@ export default function ProfilePage() {
   };
 
   const openConnections = async (type) => {
+    const requestId = connectionsRequestId.current + 1;
+    connectionsRequestId.current = requestId;
     setConnectionsType(type);
     setConnections([]);
     setConnectionsError("");
@@ -174,14 +186,25 @@ export default function ProfilePage() {
       const response = await api.get(
         `/profile/${username}/connections?type=${type}`
       );
+      if (connectionsRequestId.current !== requestId) return;
       setConnections(response.data.users || []);
     } catch (err) {
+      if (connectionsRequestId.current !== requestId) return;
       setConnectionsError(
         err.response?.data?.error || `Could not load ${type}.`
       );
     } finally {
-      setConnectionsLoading(false);
+      if (connectionsRequestId.current === requestId) {
+        setConnectionsLoading(false);
+      }
     }
+  };
+
+  const closeConnections = () => {
+    connectionsRequestId.current += 1;
+    setConnectionsType(null);
+    setConnections([]);
+    setConnectionsError("");
   };
 
   const toggleTheme = () => {
@@ -512,28 +535,57 @@ export default function ProfilePage() {
 
       {connectionsType && (
         <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 sm:items-center sm:px-4 sm:py-6"
-          onClick={() => setConnectionsType(null)}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-3 sm:p-6"
+          onClick={closeConnections}
         >
           <section
-            className="surface flex max-h-[78vh] w-full flex-col overflow-hidden rounded-b-none shadow-2xl sm:max-w-md sm:rounded-md"
+            className="flex h-[min(620px,calc(100dvh-24px))] w-full max-w-md flex-col overflow-hidden rounded-lg border border-black/[0.08] bg-white shadow-2xl dark:border-white/[0.1] dark:bg-[#15171b] sm:h-[min(620px,calc(100dvh-48px))]"
             onClick={(event) => event.stopPropagation()}
           >
             <header className="flex h-14 shrink-0 items-center justify-between border-b border-black/[0.08] px-4 dark:border-white/[0.09]">
               <div>
-                <h2 className="font-bold capitalize">{connectionsType}</h2>
-                <p className="text-xs text-zinc-500">@{profileUser.username}</p>
+                <h2 className="font-bold">{profileUser.name}</h2>
+                <p className="text-xs text-zinc-500">Connections</p>
               </div>
               <button
-                onClick={() => setConnectionsType(null)}
+                onClick={closeConnections}
                 className="icon-button"
-                title={`Close ${connectionsType}`}
+                title="Close connections"
               >
                 <X className="h-5 w-5" />
               </button>
             </header>
 
-            <div className="min-h-40 flex-1 overflow-y-auto p-2">
+            <div className="grid shrink-0 grid-cols-2 border-b border-black/[0.08] px-3 dark:border-white/[0.09]">
+              {["followers", "following"].map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => {
+                    if (type !== connectionsType) openConnections(type);
+                  }}
+                  className={`relative min-h-12 text-sm font-bold capitalize ${
+                    connectionsType === type
+                      ? "text-[#17181c] dark:text-white"
+                      : "text-zinc-500"
+                  }`}
+                >
+                  {type}
+                  <span className="ml-1 text-xs text-zinc-400">
+                    {type === "followers"
+                      ? profileUser.followers?.length || 0
+                      : profileUser.following?.length || 0}
+                  </span>
+                  <span
+                    className={`absolute inset-x-4 bottom-0 h-0.5 bg-[#e23d58] transition-opacity ${
+                      connectionsType === type ? "opacity-100" : "opacity-0"
+                    }`}
+                  />
+                </button>
+              ))}
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
               {connectionsLoading ? (
                 <div className="space-y-2">
                   {[0, 1, 2, 3].map((item) => (
@@ -570,7 +622,7 @@ export default function ProfilePage() {
                   <Link
                     key={connection._id}
                     to={`/profile/${connection.username}`}
-                    onClick={() => setConnectionsType(null)}
+                    onClick={closeConnections}
                     className="flex items-center gap-3 rounded-md p-3 transition hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
                   >
                     <img
