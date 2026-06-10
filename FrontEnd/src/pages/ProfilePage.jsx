@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Grid3X3,
   LogOut,
@@ -25,6 +27,7 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const settingsRef = useRef(null);
+  const galleryTouchStartX = useRef(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [profileUser, setProfileUser] = useState(null);
   const [posts, setPosts] = useState([]);
@@ -35,7 +38,7 @@ export default function ProfilePage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
-  const [selectedPost, setSelectedPost] = useState(null);
+  const [selectedPostIndex, setSelectedPostIndex] = useState(null);
   const [isDark, setIsDark] = useState(
     document.documentElement.classList.contains("dark")
   );
@@ -82,10 +85,27 @@ export default function ProfilePage() {
     const postId = location.state?.postId;
     if (!postId || posts.length === 0) return;
 
-    const relatedPost = posts.find((post) => post._id === postId);
-    if (relatedPost) setSelectedPost(relatedPost);
+    const relatedPostIndex = posts.findIndex((post) => post._id === postId);
+    if (relatedPostIndex >= 0) setSelectedPostIndex(relatedPostIndex);
     navigate(location.pathname, { replace: true, state: null });
   }, [location.pathname, location.state, navigate, posts]);
+
+  useEffect(() => {
+    if (selectedPostIndex === null) return;
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setSelectedPostIndex(null);
+      if (event.key === "ArrowLeft") {
+        setSelectedPostIndex((current) => Math.max(0, current - 1));
+      }
+      if (event.key === "ArrowRight") {
+        setSelectedPostIndex((current) => Math.min(posts.length - 1, current + 1));
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [posts.length, selectedPostIndex]);
 
   useEffect(() => {
     const closeSettings = (event) => {
@@ -98,6 +118,26 @@ export default function ProfilePage() {
   }, []);
 
   const isCurrentUser = currentUser?.username === profileUser?.username;
+  const selectedPost =
+    selectedPostIndex === null ? null : posts[selectedPostIndex];
+
+  const showPreviousPost = () => {
+    setSelectedPostIndex((current) => Math.max(0, current - 1));
+  };
+
+  const showNextPost = () => {
+    setSelectedPostIndex((current) => Math.min(posts.length - 1, current + 1));
+  };
+
+  const handleGalleryTouchEnd = (event) => {
+    if (galleryTouchStartX.current === null) return;
+    const distance = event.changedTouches[0].clientX - galleryTouchStartX.current;
+    galleryTouchStartX.current = null;
+
+    if (Math.abs(distance) < 50) return;
+    if (distance > 0 && selectedPostIndex > 0) showPreviousPost();
+    if (distance < 0 && selectedPostIndex < posts.length - 1) showNextPost();
+  };
 
   const updateFollow = async (action) => {
     if (!profileUser || actionLoading) return;
@@ -314,12 +354,12 @@ export default function ProfilePage() {
 
           {posts.length ? (
             <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
-              {posts.map((post) => {
+              {posts.map((post, index) => {
                 const media = post.media?.[0];
                 return (
                   <button
                     key={post._id}
-                    onClick={() => setSelectedPost(post)}
+                    onClick={() => setSelectedPostIndex(index)}
                     className="group relative aspect-square overflow-hidden bg-zinc-200 dark:bg-zinc-800"
                     aria-label="Open post"
                   >
@@ -352,10 +392,33 @@ export default function ProfilePage() {
       </main>
 
       {selectedPost && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 px-3 py-6">
-          <div className="mx-auto max-w-2xl">
+        <div
+          className="fixed inset-0 z-50 overflow-y-auto bg-black/80 px-3 py-6"
+          onTouchStart={(event) => {
+            galleryTouchStartX.current = event.changedTouches[0].clientX;
+          }}
+          onTouchEnd={handleGalleryTouchEnd}
+        >
+          <button
+            onClick={showPreviousPost}
+            disabled={selectedPostIndex === 0}
+            className="icon-button fixed left-4 top-1/2 z-10 hidden -translate-y-1/2 bg-black/60 text-white hover:bg-black/80 hover:text-white disabled:opacity-25 sm:grid"
+            title="Previous post"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+          <button
+            onClick={showNextPost}
+            disabled={selectedPostIndex === posts.length - 1}
+            className="icon-button fixed right-4 top-1/2 z-10 hidden -translate-y-1/2 bg-black/60 text-white hover:bg-black/80 hover:text-white disabled:opacity-25 sm:grid"
+            title="Next post"
+          >
+            <ChevronRight className="h-6 w-6" />
+          </button>
+
+          <div className="mx-auto max-w-2xl pb-16 sm:pb-0">
             <button
-              onClick={() => setSelectedPost(null)}
+              onClick={() => setSelectedPostIndex(null)}
               className="icon-button fixed right-4 top-4 z-10 bg-black/60 text-white hover:bg-black/80 hover:text-white"
               title="Close post"
             >
@@ -364,10 +427,32 @@ export default function ProfilePage() {
             <PostCard
               post={selectedPost}
               onDeleted={() => {
-                setSelectedPost(null);
+                setSelectedPostIndex(null);
                 loadProfile();
               }}
             />
+          </div>
+
+          <div className="fixed bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-full bg-black/75 p-1.5 text-white shadow-xl sm:hidden">
+            <button
+              onClick={showPreviousPost}
+              disabled={selectedPostIndex === 0}
+              className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/10 disabled:opacity-30"
+              title="Previous post"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <span className="min-w-12 text-center text-xs font-bold">
+              {selectedPostIndex + 1} / {posts.length}
+            </span>
+            <button
+              onClick={showNextPost}
+              disabled={selectedPostIndex === posts.length - 1}
+              className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/10 disabled:opacity-30"
+              title="Next post"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
           </div>
         </div>
       )}
