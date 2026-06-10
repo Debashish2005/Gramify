@@ -44,6 +44,10 @@ const UserSchema = new mongoose.Schema({
     type: String,
     default: "",
   },
+  lastSeen: {
+    type: Date,
+    default: Date.now,
+  },
   followers: [
     {
       type: mongoose.Schema.Types.ObjectId,
@@ -76,6 +80,10 @@ const UserSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now },
     from: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     post: { type: mongoose.Schema.Types.ObjectId, ref: "Post" }, // optional
+    reactionType: {
+      type: String,
+      enum: ["like", "love", "smile", "sad", "angry"],
+    },
   },
 ],
 messages: [

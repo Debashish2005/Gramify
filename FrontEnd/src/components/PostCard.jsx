@@ -57,7 +57,7 @@ const PostMedia = ({ media }) => {
 
 const getTopReaction = (reactions) => {
   if (!reactions) return null;
-  const sorted = Object.entries(reactions).filter(([_, count]) => count > 0).sort((a, b) => b[1] - a[1]);
+  const sorted = Object.entries(reactions).filter(([, count]) => count > 0).sort((a, b) => b[1] - a[1]);
   if (sorted.length === 0) return null;
   return { type: sorted[0][0], count: sorted[0][1] };
 };
@@ -77,6 +77,9 @@ export default function PostCard({ post }) {
   const topReaction = getTopReaction(postData.reactions || {});
   const [currentUser, setCurrentUser] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showReactionList, setShowReactionList] = useState(false);
+  const [reactionUsers, setReactionUsers] = useState({});
+  const [loadingReactions, setLoadingReactions] = useState(false);
 
   const iconMap = {
     like: <ThumbsUp className="text-blue-500 w-4 h-4" />,
@@ -87,6 +90,24 @@ export default function PostCard({ post }) {
   };
 
   const media = postData.media || [];
+  const totalReactions = Object.values(postData.reactions || {}).reduce(
+    (total, count) => total + Number(count || 0),
+    0
+  );
+
+  const openReactionList = async () => {
+    if (totalReactions === 0) return;
+    setShowReactionList(true);
+    setLoadingReactions(true);
+    try {
+      const res = await api.get(`/feed/${postData._id}/reactions`);
+      setReactionUsers(res.data.reactions || {});
+    } catch (err) {
+      console.error("Failed to load reactions:", err);
+    } finally {
+      setLoadingReactions(false);
+    }
+  };
 
   useEffect(() => {
     setPostData(post);
@@ -227,14 +248,19 @@ export default function PostCard({ post }) {
 
         {/* Reaction summary */}
         <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400 px-4 py-2">
-          <div className="flex items-center space-x-1">
+          <button
+            type="button"
+            onClick={openReactionList}
+            className="flex items-center space-x-1 hover:underline disabled:no-underline"
+            disabled={totalReactions === 0}
+          >
             {topReaction && (
               <span className="flex items-center">
                 {iconMap[topReaction.type]}
-                <span className="ml-1">{topReaction.count}</span>
+                <span className="ml-1">{totalReactions}</span>
               </span>
             )}
-          </div>
+          </button>
           <div className="flex space-x-2">
             <span>{postData.comments?.length || 0} comments</span>
             <span>{postData.shares || 0} shares</span>
@@ -395,6 +421,63 @@ export default function PostCard({ post }) {
         title="Delete Post"
         message="Are you sure you want to delete this post? This action cannot be undone."
       />
+      <ReactionListModal
+        isOpen={showReactionList}
+        onClose={() => setShowReactionList(false)}
+        reactions={reactionUsers}
+        loading={loadingReactions}
+        iconMap={iconMap}
+      />
+    </div>
+  );
+}
+
+function ReactionListModal({ isOpen, onClose, reactions, loading, iconMap }) {
+  if (!isOpen) return null;
+
+  const people = Object.entries(reactions || {}).flatMap(([type, users]) =>
+    (users || []).map((user) => ({ ...user, reactionType: type }))
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <div className="w-full max-w-sm overflow-hidden rounded-lg bg-white shadow-xl dark:bg-gray-900">
+        <div className="flex items-center justify-between border-b p-4 dark:border-gray-800">
+          <h2 className="font-semibold">Reactions</h2>
+          <button onClick={onClose} className="rounded-md p-1 hover:bg-gray-100 dark:hover:bg-gray-800">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="max-h-96 overflow-y-auto p-2">
+          {loading ? (
+            <div className="space-y-2 p-2 animate-pulse">
+              {[0, 1, 2].map((item) => (
+                <div key={item} className="h-12 rounded-md bg-gray-100 dark:bg-gray-800" />
+              ))}
+            </div>
+          ) : (
+            people.map((user) => (
+              <Link
+                key={`${user._id}-${user.reactionType}`}
+                to={`/profile/${user.username}`}
+                onClick={onClose}
+                className="flex items-center gap-3 rounded-md p-2 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                <img
+                  src={user.dp || "/default.jpg"}
+                  alt=""
+                  className="h-10 w-10 rounded-full object-cover"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{user.username}</p>
+                  <p className="truncate text-xs text-gray-500">{user.name}</p>
+                </div>
+                {iconMap[user.reactionType]}
+              </Link>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 }

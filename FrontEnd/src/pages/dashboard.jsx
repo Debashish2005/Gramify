@@ -48,10 +48,8 @@ useEffect(() => {
         {/* Header */}
         <HeaderNav />
 
-        {/* Main Layout */}
-       
-          {/* Scrollable Center Content */}
-          <div className="flex-1 overflow-y-auto md:mr-64">
+        <div className="mx-auto flex w-full max-w-7xl flex-1 items-start gap-6 px-0 xl:px-6">
+          <div className="min-w-0 flex-1 overflow-y-auto">
             <UserCard />
         <div className="flex flex-col">
   {loading ? (
@@ -75,6 +73,8 @@ useEffect(() => {
 </div>
 
           </div>
+          <RightSidebar />
+        </div>
       </div>
     </>
   );

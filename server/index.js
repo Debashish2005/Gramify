@@ -139,27 +139,71 @@ function auth(req, res, next) {
 }
 
 // ✅ WebSocket logic
-const users = {}; // optional, but we'll still use it for debugging
+const onlineUsers = new Map();
+const socketUsers = new Map();
+
+function addOnlineUser(userId, socketId) {
+  const sockets = onlineUsers.get(userId) || new Set();
+  sockets.add(socketId);
+  onlineUsers.set(userId, sockets);
+  socketUsers.set(socketId, userId);
+}
+
+async function removeOnlineUser(socketId) {
+  const userId = socketUsers.get(socketId);
+  if (!userId) return;
+
+  const sockets = onlineUsers.get(userId);
+  sockets?.delete(socketId);
+  socketUsers.delete(socketId);
+
+  if (!sockets || sockets.size === 0) {
+    onlineUsers.delete(userId);
+    const lastSeen = new Date();
+    await UserModel.findByIdAndUpdate(userId, { lastSeen });
+    io.emit("presence-update", { userId, online: false, lastSeen });
+  }
+}
+
+async function createNotification(targetUserId, notification) {
+  if (!targetUserId || targetUserId.toString() === notification.from.toString()) {
+    return;
+  }
+
+  const targetUser = await UserModel.findById(targetUserId);
+  if (!targetUser) return;
+
+  targetUser.notifications.push(notification);
+  await targetUser.save();
+
+  const created = targetUser.notifications[targetUser.notifications.length - 1];
+  const populated = await UserModel.populate(created, {
+    path: "from",
+    select: "username name dp",
+  });
+
+  io.to(targetUserId.toString()).emit("notification", populated);
+}
 
 io.on("connection", (socket) => {
   console.log("⚡ New socket connected:", socket.id);
 
   socket.on("join", (userId) => {
     socket.join(userId); // ✅ join a room named by userId
-    users[userId] = socket.id;
+    addOnlineUser(userId, socket.id);
+    io.emit("presence-update", { userId, online: true, lastSeen: null });
     console.log(`🟢 User ${userId} joined with socket ${socket.id}`);
   });
 
-  socket.on("send-message", async ({ from, to, content, conversationId }) => {
-    const message = await Message.create({ from, to, content, conversationId });
+  socket.on("send-message", () => {
+    return;
 
     // ✅ Emit to the userId room instead of socket ID
-    io.to(to).emit("receive-message", message);
   });
 
-  socket.on("disconnect", () => {
+  socket.on("disconnect", async () => {
     console.log("🔌 Socket disconnected:", socket.id);
-    // Optionally: remove user from map (advanced)
+    await removeOnlineUser(socket.id);
   });
 });
 
@@ -557,7 +601,35 @@ app.post("/feed/:postId/react", auth, async (req, res) => {
   post.reactions[type] = [...(post.reactions[type] || []), userId];
   await post.save();
 
+  await createNotification(post.user, {
+    type: "reaction",
+    reactionType: type,
+    message: `reacted ${type} to your post`,
+    from: userId,
+    post: post._id,
+  });
+
   res.json({ reactions: post.reactions });
+});
+
+app.get("/feed/:postId/reactions", auth, async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.postId)
+      .populate("reactions.like", "username name dp")
+      .populate("reactions.love", "username name dp")
+      .populate("reactions.smile", "username name dp")
+      .populate("reactions.sad", "username name dp")
+      .populate("reactions.angry", "username name dp");
+
+    if (!post) {
+      return res.status(404).json({ error: "Post not found" });
+    }
+
+    res.json({ reactions: post.reactions });
+  } catch (err) {
+    console.error("Failed to load reactions:", err);
+    res.status(500).json({ error: "Failed to load reactions" });
+  }
 });
 
 app.post("/feed/:postId/comment", auth, async (req, res) => {
@@ -581,6 +653,13 @@ app.post("/feed/:postId/comment", auth, async (req, res) => {
     ).populate("comments.user", "username dp");
 
     const newComment = post.comments[post.comments.length - 1]; // last one is the newly added
+
+    await createNotification(post.user, {
+      type: "comment",
+      message: "commented on your post",
+      from: userId,
+      post: post._id,
+    });
 
     res.status(201).json({ comment: newComment });
   } catch (err) {
@@ -873,6 +952,12 @@ app.post("/follow-request/:userId",auth, async (req, res) => {
     fromUser.sentFollowRequests.push({ to: toUserId });
     await fromUser.save();
 
+    await createNotification(toUserId, {
+      type: "follow_request",
+      message: "sent you a follow request",
+      from: fromUserId,
+    });
+
     res.json({ message: "Follow request sent" });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -917,13 +1002,32 @@ return res.json({ status: "not_following" });
 // GET /notifications
 app.get("/notifications",auth, async (req, res) => {
   try {
-    const user = await UserModel.findById(req.user.id).populate("followRequests.from", "username name dp");
-console.log("User ID:", req.user.id);
-console.log("Follow Requests:", user.followRequests);
+    const user = await UserModel.findById(req.user.id)
+      .populate("followRequests.from", "username name dp")
+      .populate("notifications.from", "username name dp");
 
     const pendingRequests = user.followRequests.filter(req => req.status === "pending");
+    const notifications = [...user.notifications]
+      .filter((item) => item.type !== "follow_request")
+      .sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
+    const unreadCount =
+      notifications.filter((item) => !item.isRead).length + pendingRequests.length;
 
-    res.json({ requests: pendingRequests });
+    res.json({ requests: pendingRequests, notifications, unreadCount });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.patch("/notifications/read", auth, async (req, res) => {
+  try {
+    await UserModel.updateOne(
+      { _id: req.user.id },
+      { $set: { "notifications.$[].isRead": true } }
+    );
+    res.json({ message: "Notifications marked as read" });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -966,6 +1070,12 @@ app.put("/follow-request/:fromUserId/accept", auth, async (req, res) => {
 
     await toUser.save();
     await fromUser.save();
+
+    await createNotification(fromUser._id, {
+      type: "follow_accept",
+      message: "accepted your follow request",
+      from: toUser._id,
+    });
 
     res.json({ message: "Follow request accepted" });
   } catch (err) {
@@ -1071,8 +1181,34 @@ app.get("/messages/:conversationId", auth, async (req, res) => {
     const { conversationId } = req.params;
     const userId = req.user.id; // 👈 Add this
 
+    const conversation = await Conversation.findOne({
+      _id: conversationId,
+      participants: userId,
+    });
+
+    if (!conversation) {
+      return res.status(403).json({ error: "Conversation not available" });
+    }
+
     await Conversation.findByIdAndUpdate(conversationId, {
       $set: { [`unreadCounts.${userId}`]: 0 }
+    });
+
+    const readAt = new Date();
+    const unreadMessages = await Message.find({
+      conversationId,
+      to: userId,
+      isRead: false,
+    }).select("from");
+
+    await Message.updateMany(
+      { conversationId, to: userId, isRead: false },
+      { $set: { isRead: true, readAt } }
+    );
+
+    const senderIds = [...new Set(unreadMessages.map((message) => message.from.toString()))];
+    senderIds.forEach((senderId) => {
+      io.to(senderId).emit("messages-read", { conversationId, readAt });
     });
 
     const messages = await Message.find({ conversationId }).sort({ createdAt: 1 });
@@ -1086,16 +1222,30 @@ app.get("/messages/:conversationId", auth, async (req, res) => {
 
 
 // POST /messages
-app.post("/messages", async (req, res) => {
+app.post("/messages", auth, async (req, res) => {
   try {
-    const { conversationId, from, to, content } = req.body;
+    const { conversationId, to, content } = req.body;
+    const from = req.user.id;
+
+    if (!content?.trim()) {
+      return res.status(400).json({ error: "Message cannot be empty" });
+    }
+
+    const conversation = await Conversation.findOne({
+      _id: conversationId,
+      participants: { $all: [from, to] },
+    });
+
+    if (!conversation) {
+      return res.status(403).json({ error: "Conversation not available" });
+    }
 
     // 1. Create the message
     const message = await Message.create({
       conversationId,
       from,
       to,
-      content,
+      content: content.trim(),
     });
 
     // 2. Update the conversation's lastMessage field
@@ -1131,7 +1281,7 @@ const conversations = await Conversation.find({
   })
   .populate({
     path: "participants",
-    select: "username dp",
+    select: "username name dp lastSeen",
   })
   .sort({ "lastMessage.createdAt": -1 }); // sort by latest message
 
@@ -1144,7 +1294,10 @@ const conversations = await Conversation.find({
       return {
         userId: otherUser._id,
         name: otherUser.username,
+        displayName: otherUser.name,
         dp: otherUser.dp,
+        online: onlineUsers.has(otherUser._id.toString()),
+        lastSeen: otherUser.lastSeen,
         lastMessage: conv.lastMessage?.content || "No messages yet",
         lastMessageTime: conv.lastMessage?.createdAt || null,
         unreadCount: conv.unreadCounts?.get?.(userId.toString()) || 0,

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { cloneElement } from "react";
 import PostFormModal from "./PostFormModal"; // adjust path if needed
+import socket from "../socket";
 
 // === Navigation Icon Component ===
 const NavIcon = ({ icon, badgeCount = 0 }) => {
@@ -49,6 +50,8 @@ const [loading, setLoading] = useState(false);
         const res = await api.get("/me"); // This endpoint should include unreadNotifications and unreadMessages
         if (isMounted) {
           setUser(res.data.user);
+          setUnreadNotifications(res.data.unreadNotifications || 0);
+          socket.emit("join", res.data.user.id);
         }
       } catch (err) {
         console.error("Failed to fetch counts", err);
@@ -87,7 +90,6 @@ const [loading, setLoading] = useState(false);
     return () => clearInterval(intervalId); // Cleanup on unmount
   }, []);
 
-  const [activeTab, setActiveTab] = React.useState("Home");
   const location = useLocation();
   const pathname = location.pathname;
   const navItems = [
@@ -102,7 +104,7 @@ useEffect(() => {
   const fetchRequests = async () => {
     try {
       const res = await api.get("/notifications");
-      setUnreadNotifications(res.data.requests.length);
+      setUnreadNotifications(res.data.unreadCount || 0);
     } catch (err) {
       console.error("Failed to fetch notifications", err);
     }
@@ -112,6 +114,15 @@ useEffect(() => {
   const interval = setInterval(fetchRequests, 10000); // fetch every 30 seconds
 
   return () => clearInterval(interval); // cleanup on unmount
+}, []);
+
+useEffect(() => {
+  const handleNotification = () => {
+    setUnreadNotifications((count) => count + 1);
+  };
+
+  socket.on("notification", handleNotification);
+  return () => socket.off("notification", handleNotification);
 }, []);
 
 useEffect(() => {
@@ -219,7 +230,10 @@ useEffect(() => {
             { name: "Notifications", icon: <Bell />, color: "from-pink-500 via-purple-500 to-teal-400", badgeCount: unreadNotifications, to: "/notifications" },
             { name: "Messages", icon: <MessageSquare />, color: "from-pink-500 via-purple-500 to-teal-400", badgeCount: unreadMessages, to: "/messages" },
           ].map(({ name, icon, color, badgeCount = 0, to }) => {
-            const isActive = activeTab === name;
+            const isActive =
+              (name === "Home" && pathname === "/dashboard") ||
+              (name === "Notifications" && pathname === "/notifications") ||
+              (name === "Messages" && pathname === "/messages");
 
             const styledIcon = cloneElement(icon, {
               className: `w-6 h-6 transition-colors ${
@@ -268,7 +282,6 @@ useEffect(() => {
                 key={name}
                 to={to}
                 className="flex flex-col items-center space-y-1 cursor-pointer"
-                onClick={() => setActiveTab(name)}
               >
                 {iconContent}
                 {isActive && (
@@ -325,7 +338,7 @@ useEffect(() => {
 
         {/* Bottom Nav */}
         <div className="fixed bottom-0 left-0 right-0 mb-0 flex justify-around items-center bg-white dark:bg-black shadow-md border-t dark:border-gray-700 py-2 z-50">
-          {navItems.map(({ to, icon, badgeCount, label }) => {
+          {navItems.map(({ to, icon, badgeCount }) => {
             const isActive = pathname === to;
             const isProfileTab = to.startsWith("/profile");
 

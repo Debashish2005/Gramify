@@ -24,6 +24,10 @@ const MessageSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  readAt: {
+    type: Date,
+    default: null,
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model("Message", MessageSchema);
