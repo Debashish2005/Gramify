@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Camera, Smile } from "lucide-react";
+import { Camera, ImagePlus, Smile } from "lucide-react";
 import EmojiPicker from "emoji-picker-react";
 import toast from "react-hot-toast";
 import api from "../api/axios";
@@ -9,6 +9,8 @@ export default function EditProfileForm({ userData, onUpdate }) {
   const [bio, setBio] = useState(userData?.bio || "");
   const [photo, setPhoto] = useState(null);
   const [preview, setPreview] = useState(userData?.dp || "");
+  const [banner, setBanner] = useState(null);
+  const [bannerPreview, setBannerPreview] = useState(userData?.banner || "");
   const [usernameError, setUsernameError] = useState("");
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -19,6 +21,13 @@ export default function EditProfileForm({ userData, onUpdate }) {
     setPreview(url);
     return () => URL.revokeObjectURL(url);
   }, [photo]);
+
+  useEffect(() => {
+    if (!banner) return;
+    const url = URL.createObjectURL(banner);
+    setBannerPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [banner]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -40,6 +49,7 @@ export default function EditProfileForm({ userData, onUpdate }) {
       formData.append("username", username);
       formData.append("bio", bio);
       if (photo) formData.append("dp", photo);
+      if (banner) formData.append("banner", banner);
 
       const response = await api.put("/update-profile", formData);
       toast.success("Profile updated");
@@ -53,22 +63,47 @@ export default function EditProfileForm({ userData, onUpdate }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5 p-5">
-      <div className="flex items-center gap-4">
-        <img
-          src={preview || "/default-avatar.png"}
-          alt=""
-          className="avatar h-20 w-20"
-        />
-        <label className="btn-secondary cursor-pointer">
-          <Camera className="h-4 w-4" />
-          Change photo
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(event) => setPhoto(event.target.files?.[0] || null)}
-            className="sr-only"
-          />
-        </label>
+      <div>
+        <span className="mb-2 block text-sm font-bold">Profile images</span>
+        <div className="relative overflow-hidden rounded-md bg-[#20242c]">
+          {bannerPreview ? (
+            <img src={bannerPreview} alt="" className="aspect-[3/1] w-full object-cover" />
+          ) : (
+            <div className="aspect-[3/1] w-full bg-[#20242c]" />
+          )}
+          <label className="absolute right-2 top-2 grid h-9 w-9 cursor-pointer place-items-center rounded-md bg-black/60 text-white transition hover:bg-black/75">
+            <ImagePlus className="h-4 w-4" />
+            <span className="sr-only">Change banner</span>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(event) => setBanner(event.target.files?.[0] || null)}
+              className="sr-only"
+            />
+          </label>
+          <label className="absolute bottom-3 left-4 cursor-pointer">
+            <span className="relative block">
+              <img
+                src={preview || "/default-avatar.png"}
+                alt=""
+                className="avatar h-20 w-20 border-4 border-white shadow-md dark:border-[#15171b]"
+              />
+              <span className="absolute bottom-0 right-0 grid h-7 w-7 place-items-center rounded-full bg-blue-600 text-white">
+                <Camera className="h-3.5 w-3.5" />
+              </span>
+            </span>
+            <span className="sr-only">Change profile photo</span>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(event) => setPhoto(event.target.files?.[0] || null)}
+              className="sr-only"
+            />
+          </label>
+        </div>
+        <p className="mt-2 text-xs text-zinc-500">
+          Use a wide image for the banner and a square image for your profile photo.
+        </p>
       </div>
 
       <label className="block">

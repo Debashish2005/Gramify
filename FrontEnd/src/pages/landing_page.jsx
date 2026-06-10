@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import Alert from "../components/alert";
 import AuthShell from "../components/AuthShell";
 import GoogleAuthButton from "../components/GoogleAuthButton";
-import api from "../api/axios";
+import api, { setAuthToken } from "../api/axios";
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({ loginInput: "", password: "" });
@@ -18,7 +18,8 @@ export default function LoginPage() {
     setSubmitting(true);
 
     try {
-      await api.post("/login", formData);
+      const response = await api.post("/login", formData);
+      setAuthToken(response.data.token);
       navigate("/dashboard");
     } catch (err) {
       setError(err.response?.data?.error || "Login failed. Check your details and try again.");

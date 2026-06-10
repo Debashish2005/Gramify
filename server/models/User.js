@@ -35,6 +35,10 @@ const UserSchema = new mongoose.Schema({
     type: String, // store image filename or full URL
     default: "",  // default to blank or a default image URL
   },
+  banner: {
+    type: String,
+    default: "",
+  },
   bio: {
     type: String,
     default: "",

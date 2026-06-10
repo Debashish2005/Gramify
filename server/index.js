@@ -19,19 +19,42 @@ const { OAuth2Client } = require("google-auth-library");
 const app = express();
 const server = http.createServer(app); 
 
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  ...(process.env.FRONTEND_URLS || "").split(","),
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+]
+  .filter(Boolean)
+  .map((origin) => origin.trim().replace(/\/$/, ""));
+
+function corsOrigin(origin, callback) {
+  if (!origin || allowedOrigins.includes(origin.replace(/\/$/, ""))) {
+    callback(null, true);
+    return;
+  }
+
+  callback(new Error(`Origin ${origin} is not allowed by CORS`));
+}
+
+const corsOptions = {
+  origin: corsOrigin,
+  credentials: true,
+  methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL,
+    origin: corsOrigin,
     methods: ["GET", "POST"],
-    credentials: true
+    credentials: true,
   }
 });
 
 // Middlewares
-app.use(cors({
-  origin: process.env.FRONTEND_URL,
-  credentials: true
-}));
+app.set("trust proxy", 1);
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -53,8 +76,14 @@ const storage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => {
     const isVideo = file.mimetype.startsWith("video");
+    const folder =
+      file.fieldname === "dp"
+        ? "gramify/profile-pictures"
+        : file.fieldname === "banner"
+        ? "gramify/profile-banners"
+        : "gramify/posts";
     return {
-      folder: "gramify/posts",
+      folder,
       resource_type: isVideo ? "video" : "image",
       public_id: `${Date.now()}-${file.originalname}`,
     };
@@ -121,7 +150,11 @@ mongoose.connect(process.env.MONGO_URI)
 
 // Auth middleware
 function auth(req, res, next) {
-  const token = req.cookies.token;
+  const authorization = req.get("authorization");
+  const bearerToken = authorization?.startsWith("Bearer ")
+    ? authorization.slice(7).trim()
+    : null;
+  const token = req.cookies.token || bearerToken;
   if (!token) return res.status(401).json({ message: "No token provided." });
 
   try {
@@ -195,10 +228,16 @@ async function createNotification(targetUserId, notification) {
 
   const created =
     existingReaction || targetUser.notifications[targetUser.notifications.length - 1];
-  const populated = await UserModel.populate(created, {
-    path: "from",
-    select: "username name dp",
-  });
+  const populated = await UserModel.populate(created, [
+    {
+      path: "from",
+      select: "username name dp",
+    },
+    {
+      path: "post",
+      select: "media caption",
+    },
+  ]);
 
   io.to(targetUserId.toString()).emit("notification", populated);
 }
@@ -272,22 +311,21 @@ app.post('/login', async (req, res) => {
       return res.status(400).json({ error: "User not found" });
     }
 
-    // Compare password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ error: "Invalid credentials" });
-    }
-
     if (!user.password) {
       return res.status(400).json({
         error: "This account uses Google sign-in.",
       });
     }
 
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: "Invalid credentials" });
+    }
+
     const token = createAuthToken(user);
     setAuthCookie(res, token);
 
-    res.status(200).json({ message: "Login successful" });
+    res.status(200).json({ message: "Login successful", token });
 
   } catch (err) {
     console.error(err);
@@ -355,6 +393,7 @@ app.post("/auth/google", async (req, res) => {
 
     res.status(200).json({
       message: "Google login successful",
+      token,
       user: {
         id: user._id,
         email: user.email,
@@ -442,6 +481,7 @@ app.get("/me", auth, async (req, res) => {
         username: user.username,
         name: user.name,
         dp: user.dp,
+        banner: user.banner,
         bio: user.bio,
         website: user.website,
         followers: user.followers,
@@ -720,7 +760,14 @@ app.post("/feed/:postId/comment", auth, async (req, res) => {
   }
 });
  
-app.put("/update-profile", auth, upload.single("dp"), async (req, res) => {
+app.put(
+  "/update-profile",
+  auth,
+  upload.fields([
+    { name: "dp", maxCount: 1 },
+    { name: "banner", maxCount: 1 },
+  ]),
+  async (req, res) => {
   try {
     const { username, bio } = req.body;
     const userId = req.user.id;
@@ -733,17 +780,12 @@ app.put("/update-profile", auth, upload.single("dp"), async (req, res) => {
 
     const updateData = { username, bio };
 
-    // If DP image uploaded, upload to Cloudinary
-    if (req.file) {
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: "profile_pictures",
-      });
-      updateData.dp = result.secure_url; // ✅ Save to dp, not profilePic
-    }
+    if (req.files?.dp?.[0]) updateData.dp = req.files.dp[0].path;
+    if (req.files?.banner?.[0]) updateData.banner = req.files.banner[0].path;
 
     const updatedUser = await UserModel.findByIdAndUpdate(userId, updateData, {
       new: true,
-    });
+    }).select("-password -googleId -resetToken -resetTokenExpiry");
 
     res.json(updatedUser);
   } catch (err) {
@@ -1060,7 +1102,8 @@ app.get("/notifications",auth, async (req, res) => {
   try {
     const user = await UserModel.findById(req.user.id)
       .populate("followRequests.from", "username name dp")
-      .populate("notifications.from", "username name dp");
+      .populate("notifications.from", "username name dp")
+      .populate("notifications.post", "media caption");
 
     const pendingRequests = user.followRequests.filter(req => req.status === "pending");
     const notifications = [...user.notifications]

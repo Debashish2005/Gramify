@@ -1,5 +1,15 @@
 import { useEffect, useState } from "react";
-import { Bell, Check, Heart, MessageCircle, UserCheck, UserPlus, X } from "lucide-react";
+import {
+  Bell,
+  Check,
+  FileText,
+  Heart,
+  MessageCircle,
+  Play,
+  UserCheck,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import api from "../api/axios";
 import HeaderNav from "../components/header";
@@ -22,6 +32,32 @@ function relativeTime(value) {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
   return `${Math.floor(hours / 24)}d`;
+}
+
+function PostPreview({ post }) {
+  if (!post) return null;
+  const media = post.media?.[0];
+
+  if (media?.type === "image") {
+    return <img src={media.url} alt="" className="h-12 w-12 rounded-md object-cover" />;
+  }
+
+  if (media?.type === "video") {
+    return (
+      <span className="relative h-12 w-12 overflow-hidden rounded-md bg-zinc-900">
+        <video src={media.url} muted preload="metadata" className="h-full w-full object-cover" />
+        <span className="absolute inset-0 grid place-items-center bg-black/25 text-white">
+          <Play className="h-4 w-4" fill="currentColor" />
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span className="grid h-12 w-12 place-items-center rounded-md bg-zinc-100 text-zinc-500 dark:bg-zinc-800">
+      <FileText className="h-5 w-5" />
+    </span>
+  );
 }
 
 export default function Notifications() {
@@ -155,13 +191,16 @@ export default function Notifications() {
 
               {notifications.map((notification) => {
                 const Icon = activityIcons[notification.type] || Bell;
+                const profilePath = `/profile/${notification.from?.username || ""}`;
+                const targetState = notification.post?._id
+                  ? { postId: notification.post._id }
+                  : undefined;
                 return (
-                  <Link
+                  <div
                     key={notification._id}
-                    to={`/profile/${notification.from?.username || ""}`}
                     className="flex items-center gap-3 p-4 transition hover:bg-black/[0.025] dark:hover:bg-white/[0.035]"
                   >
-                    <span className="relative">
+                    <Link to={profilePath} className="relative shrink-0">
                       <img
                         src={notification.from?.dp || "/default.jpg"}
                         alt=""
@@ -170,8 +209,12 @@ export default function Notifications() {
                       <span className="absolute -bottom-1 -right-1 grid h-5 w-5 place-items-center rounded-full border-2 border-white bg-[#e23d58] text-white dark:border-[#15171b]">
                         <Icon className="h-3 w-3" />
                       </span>
-                    </span>
-                    <span className="min-w-0 flex-1">
+                    </Link>
+                    <Link
+                      to={profilePath}
+                      state={targetState}
+                      className="min-w-0 flex-1"
+                    >
                       <span className="block text-sm leading-5">
                         <strong>{notification.from?.username || "Someone"}</strong>{" "}
                         {notification.message}
@@ -179,11 +222,21 @@ export default function Notifications() {
                       <span className="block text-xs text-zinc-500">
                         {relativeTime(notification.createdAt)}
                       </span>
-                    </span>
+                    </Link>
                     {!notification.isRead && (
-                      <span className="h-2 w-2 rounded-full bg-[#e23d58]" />
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-[#e23d58]" />
                     )}
-                  </Link>
+                    {notification.post && (
+                      <Link
+                        to={profilePath}
+                        state={targetState}
+                        className="shrink-0"
+                        aria-label="Open related post"
+                      >
+                        <PostPreview post={notification.post} />
+                      </Link>
+                    )}
+                  </div>
                 );
               })}
             </div>

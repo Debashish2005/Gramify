@@ -1,7 +1,7 @@
 import { GoogleLogin } from "@react-oauth/google";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../api/axios";
+import api, { setAuthToken } from "../api/axios";
 
 export default function GoogleAuthButton({ text = "signin_with" }) {
   const navigate = useNavigate();
@@ -26,9 +26,10 @@ export default function GoogleAuthButton({ text = "signin_with" }) {
     setError("");
 
     try {
-      await api.post("/auth/google", {
+      const response = await api.post("/auth/google", {
         credential: credentialResponse.credential,
       });
+      setAuthToken(response.data.token);
       navigate("/dashboard");
     } catch (err) {
       setError(

@@ -12,9 +12,9 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import api from "../api/axios";
+import api, { clearAuthToken } from "../api/axios";
 import EditProfileForm from "../components/EditProfileForm";
 import HeaderNav from "../components/header";
 import { EmptyState } from "../components/PageState";
@@ -23,6 +23,7 @@ import PostCard from "../components/PostCard";
 export default function ProfilePage() {
   const { username } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const settingsRef = useRef(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [profileUser, setProfileUser] = useState(null);
@@ -78,6 +79,15 @@ export default function ProfilePage() {
   }, [loadProfile]);
 
   useEffect(() => {
+    const postId = location.state?.postId;
+    if (!postId || posts.length === 0) return;
+
+    const relatedPost = posts.find((post) => post._id === postId);
+    if (relatedPost) setSelectedPost(relatedPost);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate, posts]);
+
+  useEffect(() => {
     const closeSettings = (event) => {
       if (settingsRef.current && !settingsRef.current.contains(event.target)) {
         setShowSettings(false);
@@ -117,8 +127,12 @@ export default function ProfilePage() {
   };
 
   const logout = async () => {
-    await api.post("/logout");
-    navigate("/login");
+    try {
+      await api.post("/logout");
+    } finally {
+      clearAuthToken();
+      navigate("/login");
+    }
   };
 
   if (loading) {
@@ -168,7 +182,15 @@ export default function ProfilePage() {
       <HeaderNav />
       <main className="page-wrap py-6 sm:py-8">
         <section className="surface mx-auto max-w-5xl overflow-visible">
-          <div className="h-24 bg-[#17181c] dark:bg-[#25282f]" />
+          <div className="h-28 overflow-hidden bg-[#20242c] sm:h-40">
+            {profileUser.banner && (
+              <img
+                src={profileUser.banner}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            )}
+          </div>
           <div className="px-4 pb-6 sm:px-7">
             <div className="-mt-12 flex flex-col gap-5 sm:flex-row sm:items-end">
               <img
@@ -243,6 +265,7 @@ export default function ProfilePage() {
                             state: {
                               userId: profileUser._id,
                               name: profileUser.username,
+                              displayName: profileUser.name,
                               dp: profileUser.dp,
                             },
                           })

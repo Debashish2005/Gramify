@@ -122,6 +122,7 @@ export default function RightSidebar() {
                     state: {
                       userId: selectedChat.userId,
                       name: selectedChat.name,
+                      displayName: selectedChat.displayName,
                       dp: selectedChat.dp,
                     },
                   })
@@ -144,7 +145,7 @@ export default function RightSidebar() {
                     <p
                       className={`max-w-[82%] rounded-md px-3 py-2 text-xs leading-5 ${
                         isOwn
-                          ? "bg-[#e23d58] text-white"
+                          ? "bg-blue-600 text-white"
                           : "border border-black/[0.08] bg-white dark:border-white/[0.08] dark:bg-[#1b1e23]"
                       }`}
                     >
@@ -168,7 +169,7 @@ export default function RightSidebar() {
                 <button
                   onClick={sendMessage}
                   disabled={!input.trim()}
-                  className="icon-button bg-[#e23d58] text-white hover:bg-[#ca304a] hover:text-white disabled:opacity-40"
+                  className="icon-button bg-blue-600 text-white hover:bg-blue-700 hover:text-white disabled:opacity-40"
                   title="Send message"
                 >
                   <Send className="h-4 w-4" />
@@ -222,7 +223,7 @@ export default function RightSidebar() {
                       <span className="flex items-center justify-between gap-2">
                         <span className="truncate text-sm font-bold">{chat.name}</span>
                         {chat.unreadCount > 0 && (
-                          <span className="rounded-full bg-[#e23d58] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
                             {chat.unreadCount}
                           </span>
                         )}

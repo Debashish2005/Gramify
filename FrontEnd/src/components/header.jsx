@@ -1,27 +1,31 @@
 import { useEffect, useState } from "react";
-import { Bell, Home, MessageCircle, Plus, Search, UserRound } from "lucide-react";
+import { Bell, Heart, Home, MessageCircle, Plus, Search, UserRound } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import api from "../api/axios";
 import socket from "../socket";
 import Brand from "./Brand";
 import PostFormModal from "./PostFormModal";
 
-function Badge({ count }) {
+function Badge({ count, tone = "activity" }) {
   if (!count) return null;
   return (
-    <span className="absolute -right-1 -top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-[#e23d58] px-1 text-[10px] font-bold leading-4 text-white">
+    <span
+      className={`absolute -right-1 -top-1 grid min-h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold leading-4 text-white ${
+        tone === "messages" ? "bg-blue-600" : "bg-[#e23d58]"
+      }`}
+    >
       {count > 99 ? "99+" : count}
     </span>
   );
 }
 
-function NavItem({ to, icon, label, active, badgeCount = 0, onClick }) {
+function NavItem({ to, icon, label, active, badgeCount = 0, badgeTone, onClick }) {
   const IconComponent = icon;
   const content = (
     <>
       <span className="relative">
         <IconComponent className="h-5 w-5" strokeWidth={active ? 2.5 : 1.9} />
-        <Badge count={badgeCount} />
+        <Badge count={badgeCount} tone={badgeTone} />
       </span>
       <span className="hidden lg:block">{label}</span>
       <span
@@ -147,6 +151,7 @@ export default function HeaderNav() {
       icon: MessageCircle,
       active: pathname === "/messages",
       badgeCount: unreadMessages,
+      badgeTone: "messages",
     },
   ];
 
@@ -154,7 +159,7 @@ export default function HeaderNav() {
     ...desktopItems.slice(0, 1),
     { to: "/search", label: "Search", icon: Search, active: pathname === "/search" },
     { label: "Create", icon: Plus, onClick: () => setIsPostModalOpen(true) },
-    ...desktopItems.slice(1),
+    desktopItems[2],
     {
       to: profilePath,
       label: "Profile",
@@ -255,17 +260,22 @@ export default function HeaderNav() {
           )}
 
           <Link
-            to="/messages"
-            className="relative ml-auto md:hidden"
-            aria-label="Messages"
+            to="/notifications"
+            className={`relative ml-auto grid h-10 w-10 place-items-center rounded-md md:hidden ${
+              pathname === "/notifications" ? "text-[#e23d58]" : ""
+            }`}
+            aria-label="Activity"
           >
-            <MessageCircle className="h-6 w-6" />
-            <Badge count={unreadMessages} />
+            <Heart
+              className="h-6 w-6"
+              fill={pathname === "/notifications" ? "currentColor" : "none"}
+            />
+            <Badge count={unreadNotifications} />
           </Link>
         </div>
       </header>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-6 border-t border-black/[0.08] bg-white px-1 pb-[env(safe-area-inset-bottom)] dark:border-white/[0.09] dark:bg-[#111317] md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-5 border-t border-black/[0.08] bg-white px-1 pb-[env(safe-area-inset-bottom)] dark:border-white/[0.09] dark:bg-[#111317] md:hidden">
         {mobileItems.map((item) => {
           const Icon = item.icon;
           const className = `relative flex min-w-0 flex-col items-center justify-center gap-1 text-[10px] font-semibold ${
@@ -275,7 +285,7 @@ export default function HeaderNav() {
             <>
               <span className="relative">
                 <Icon className="h-5 w-5" strokeWidth={item.active ? 2.6 : 2} />
-                <Badge count={item.badgeCount} />
+                <Badge count={item.badgeCount} tone={item.badgeTone} />
               </span>
               <span className="truncate">{item.label}</span>
             </>
