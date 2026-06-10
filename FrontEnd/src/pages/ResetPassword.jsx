@@ -1,82 +1,96 @@
-// src/pages/ResetPassword.jsx
-import { useState, useEffect } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import Alert from "../components/alert";
+import AuthShell from "../components/AuthShell";
 import api from "../api/axios";
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
-
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const token = searchParams.get("token");
   const email = searchParams.get("email");
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (!token || !email) setError("This reset link is invalid or has expired.");
+  }, [email, token]);
 
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setMessage("");
+    setError("");
+
+    if (password.length < 8) {
+      setError("Password must contain at least 8 characters.");
+      return;
+    }
     if (password !== confirmPassword) {
-      setMessage("Passwords do not match");
+      setError("Passwords do not match.");
       return;
     }
 
+    setSubmitting(true);
     try {
-      const res = await api.post("/reset-password", {
-        email,
-        token,
-        password,
-      });
-
-      setMessage(res.data.message || "Password reset successful!");
-      setTimeout(() => navigate("/login"), 2000); // Redirect to login
+      const response = await api.post("/reset-password", { email, token, password });
+      setMessage(response.data.message || "Password updated.");
+      setTimeout(() => navigate("/login"), 1200);
     } catch (err) {
-      setMessage(err.response?.data?.message || "Reset failed.");
+      setError(err.response?.data?.message || "Could not reset the password.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  useEffect(() => {
-    if (!token || !email) {
-      setMessage("Invalid or expired reset link.");
-    }
-  }, [token, email]);
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white p-6 rounded shadow-md w-full max-w-md space-y-4"
-      >
-        <h2 className="text-xl font-semibold text-center">Reset Password</h2>
-
-        {message && <p className="text-center text-sm text-red-500">{message}</p>}
-
-        <input
-          type="password"
-          className="w-full p-2 border rounded"
-          placeholder="New Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-
-        <input
-          type="password"
-          className="w-full p-2 border rounded"
-          placeholder="Confirm Password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          required
-        />
-
+    <AuthShell
+      title="Choose a new password"
+      description="Use a password you do not use for another account."
+      footer={
+        <p className="text-sm text-zinc-500">
+          Remembered it?{" "}
+          <Link to="/login" className="font-bold text-[#e23d58]">
+            Sign in
+          </Link>
+        </p>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-semibold">New password</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            className="field"
+            autoComplete="new-password"
+            required
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-semibold">Confirm password</span>
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            className="field"
+            autoComplete="new-password"
+            required
+          />
+        </label>
+        {message && <Alert type="success" message={message} />}
+        {error && <Alert type="error" message={error} />}
         <button
           type="submit"
-          className="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600"
+          disabled={submitting || !token || !email}
+          className="btn-primary w-full"
         >
-          Change Password
+          {submitting ? "Updating..." : "Update password"}
         </button>
       </form>
-    </div>
+    </AuthShell>
   );
 }

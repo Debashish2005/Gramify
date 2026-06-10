@@ -1,200 +1,145 @@
-import { useState } from 'react';
-import Footer from "../components/footer";
-import { Link, useNavigate } from 'react-router-dom';
-import api from "../api/axios";
-import Alert from "../components/alert"; // adjust the path if needed
+import { useState } from "react";
+import { ArrowRight } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import Alert from "../components/alert";
+import AuthShell from "../components/AuthShell";
 import GoogleAuthButton from "../components/GoogleAuthButton";
+import api from "../api/axios";
 
 export default function SignupPage() {
-const [formData, setFormData] = useState({
-    email: "",
-    password: "",
+  const [formData, setFormData] = useState({
     name: "",
     username: "",
+    email: "",
+    password: "",
   });
-  const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
-
+  const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
 
-  // ✅ Fixed: Handle input changes
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+  const handleChange = (event) => {
+    setFormData((current) => ({ ...current, [event.target.name]: event.target.value }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-     setError(""); // clear old errors
+  const validate = () => {
+    if (!/^\S+@\S+\.\S+$/.test(formData.email)) return "Enter a valid email address.";
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(formData.username)) {
+      return "Username must be 3-20 characters using letters, numbers, or underscores.";
+    }
+    if (
+      formData.password.length < 8 ||
+      !/[a-z]/.test(formData.password) ||
+      !/[A-Z]/.test(formData.password) ||
+      !/\d/.test(formData.password) ||
+      !/[^A-Za-z0-9]/.test(formData.password)
+    ) {
+      return "Use 8+ characters with uppercase, lowercase, number, and symbol.";
+    }
+    if (formData.name.trim().length < 2) return "Enter your full name.";
+    return "";
+  };
 
-    const { email, password, name, username } = formData;
-
-    // ✅ Validation
-    if (!email || !password  || !name || !username) {
-      setError("Please fill in all fields.");
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
-      setError("Please enter a valid email address.");
-      return;
-    }
-
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters long.");
-      return;
-    }
-
-if (formData.password.length < 6) {
-  setError("Password must be at least 6 characters long.");
-  return;
-}
-
-if (!/[a-z]/.test(formData.password)) {
-  setError("Password must contain at least one lowercase letter.");
-  return;
-}
-
-if (!/[A-Z]/.test(formData.password)) {
-  setError("Password must contain at least one uppercase letter.");
-  return;
-}
-
-if (!/\d/.test(formData.password)) {
-  setError("Password must contain at least one number.");
-  return;
-}
-
-if (!/[^A-Za-z0-9]/.test(formData.password)) {
-  setError("Password must contain at least one special character.");
-  return;
-}
-
-
-
-if (name.length < 2 || name.length > 50) {
-  setError("Name must be between 2 and 50 characters.");
-  return;
-}
-if(/^\d+$/.test(formData.name) ){
-  setError("Enter a valid name");
-  return;
-}
-
-if (formData.username.length < 3 || formData.username.length > 20) {
-  setError("Username must be between 3 and 20 characters.");
-  return;
-}
-
-if (
-  !/^[a-zA-Z0-9_]+$/.test(formData.username) ||  // only letters, numbers, underscores
-  /^_/.test(formData.username) ||               // starts with _
-  /_$/.test(formData.username) ||               // ends with _
-  /__/.test(formData.username) ||               // consecutive underscores
-  /^\d+$/.test(formData.username)               // only numbers
-) {
-  setError("Enter a valid username.");
-  return;
-}
-
+    setError("");
+    setSubmitting(true);
     try {
-      const response = await api.post("/signup", formData);
-
-      if (response.data.success) {
-  setSuccess("Signup successful!");
- 
-  setTimeout(() => {
-    navigate("/login");
-  }, 1000);
-}
+      await api.post("/signup", {
+        ...formData,
+        name: formData.name.trim(),
+        username: formData.username.trim(),
+        email: formData.email.trim(),
+      });
+      navigate("/login");
     } catch (err) {
-      setError(err.response?.data?.error || "Signup failed");
+      setError(err.response?.data?.error || "Could not create your account.");
+    } finally {
+      setSubmitting(false);
     }
-  }; 
+  };
 
   return (
-<>
-    <div className="min-h-screen bg-white flex flex-col px-4 text-gray-900">
-      <div className="flex-1 flex items-center justify-center">
-        <div className="w-full max-w-sm space-y-4">
-          <div className="bg-white p-6 rounded-lg border border-gray-200 text-center shadow-sm">
-            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-purple-500 to-teal-400 font-[cursive] pb-4">
-              Gramify
-            </h1>
-            <p className="mb-4 text-gray-600 text-sm">
-              Sign up to see photos and videos from your friends.
-            </p>
+    <AuthShell
+      title="Create your account"
+      description="Join the people and conversations that matter to you."
+      footer={
+        <p className="text-sm text-zinc-500">
+          Already have an account?{" "}
+          <Link to="/login" className="font-bold text-[#e23d58] hover:underline">
+            Sign in
+          </Link>
+        </p>
+      }
+    >
+      <GoogleAuthButton text="signup_with" />
 
-            <div className="mb-4">
-              <GoogleAuthButton text="signup_with" />
-            </div>
-
-            <div className="flex items-center justify-center mb-4">
-              <div className="border-t border-gray-300 w-1/4"></div>
-              <span className="text-gray-500 px-2 text-sm">OR</span>
-              <div className="border-t border-gray-300 w-1/4"></div>
-            </div>
-
-            {/* ✅ Signup Form */}
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <input
-                type="text"
-                name="email"
-                placeholder="Email address"
-                className="w-full px-3 py-2 bg-white rounded border border-gray-300 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
-                onChange={handleChange}
-                value={formData.email}
-              />
-              <input
-                type="password"
-                name="password"
-                placeholder="Password"
-                className="w-full px-3 py-2 bg-white rounded border border-gray-300 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
-                onChange={handleChange}
-                value={formData.password}
-              />
-              <input
-                type="text"
-                name="name"
-                placeholder="Full Name"
-                className="w-full px-3 py-2 bg-white rounded border border-gray-300 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
-                onChange={handleChange}
-                value={formData.name}
-              />
-              <input
-                type="text"
-                name="username"
-                placeholder="Username"
-                className="w-full px-3 py-2 bg-white rounded border border-gray-300 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
-                onChange={handleChange}
-                value={formData.username}
-              />
-              <p className="text-xs text-gray-500 leading-tight">
-                By signing up, you agree to our <a href="#" className="text-blue-500 font-medium">Terms</a>, <a href="#" className="text-blue-500 font-medium">Privacy Policy</a> and <a href="#" className="text-blue-500 font-medium">Cookies Policy</a>.
-              </p>
-              {success && <Alert type="success" message={success} />}
-              {error && <Alert type="error" message={error} />}
-              <button
-                type="submit"
-                className="w-full bg-gradient-to-r from-pink-500 to-purple-500 py-2 rounded text-sm font-medium text-white hover:opacity-90"
-              >
-                Sign up
-              </button>
-            </form>
-          </div>
-
-          <div className="bg-white p-4 rounded-md border border-gray-200 text-center shadow-sm">
-            <p className="text-sm">
-              Have an account? <Link to="/login" className="text-blue-500 font-medium hover:underline">Log in</Link>
-            </p>
-          </div>
-        </div>
+      <div className="my-6 flex items-center gap-3 text-xs font-semibold text-zinc-400">
+        <span className="h-px flex-1 bg-black/[0.09] dark:bg-white/[0.1]" />
+        OR USE EMAIL
+        <span className="h-px flex-1 bg-black/[0.09] dark:bg-white/[0.1]" />
       </div>
-    </div>
-    <Footer />
-</>
+
+      <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
+        <label className="block sm:col-span-2">
+          <span className="mb-1.5 block text-sm font-semibold">Full name</span>
+          <input name="name" value={formData.name} onChange={handleChange} className="field" required />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-semibold">Username</span>
+          <input
+            name="username"
+            value={formData.username}
+            onChange={handleChange}
+            className="field"
+            autoComplete="username"
+            required
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-semibold">Email</span>
+          <input
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            className="field"
+            autoComplete="email"
+            required
+          />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="mb-1.5 block text-sm font-semibold">Password</span>
+          <input
+            type="password"
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            className="field"
+            autoComplete="new-password"
+            required
+          />
+          <span className="mt-1.5 block text-xs text-zinc-500">
+            8+ characters with uppercase, lowercase, number, and symbol.
+          </span>
+        </label>
+
+        {error && (
+          <div className="sm:col-span-2">
+            <Alert type="error" message={error} />
+          </div>
+        )}
+
+        <button type="submit" disabled={submitting} className="btn-primary sm:col-span-2">
+          {submitting ? "Creating account..." : "Create account"}
+          {!submitting && <ArrowRight className="h-4 w-4" />}
+        </button>
+      </form>
+    </AuthShell>
   );
 }

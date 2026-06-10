@@ -1,10 +1,20 @@
-import { useState, useEffect } from "react";
-import { X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Globe2, ImagePlus, Lock, Users, X } from "lucide-react";
 import api from "../api/axios";
-import EmojiPicker from "emoji-picker-react";
 import EmojiTextArea from "./EmojiTextArea";
 
-export default function PostFormModal({ isOpen, onClose, onSubmit, initialPostData = null }) {
+const visibilityOptions = [
+  { value: "public", label: "Public", description: "Anyone can see this post", Icon: Globe2 },
+  { value: "friends", label: "Friends", description: "People you follow", Icon: Users },
+  { value: "private", label: "Only me", description: "Visible only to you", Icon: Lock },
+];
+
+export default function PostFormModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  initialPostData = null,
+}) {
   const [caption, setCaption] = useState("");
   const [media, setMedia] = useState([]);
   const [visibility, setVisibility] = useState("public");
@@ -12,93 +22,88 @@ export default function PostFormModal({ isOpen, onClose, onSubmit, initialPostDa
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Populate form with initial post data (for edit mode)
   useEffect(() => {
-    if (initialPostData) {
-      setCaption(initialPostData.caption || "");
-      setVisibility(initialPostData.visibility || "public");
-      setTags(initialPostData.tags?.join(", ") || "");
-      setMedia(
-        (initialPostData.media || []).map((m) => ({
-          preview: m.url,
-          type: m.type,
-          existing: true, // mark as existing
-        }))
-      );
-    } else {
-      resetForm();
-    }
+    if (!isOpen) return;
+    setCaption(initialPostData?.caption || "");
+    setVisibility(initialPostData?.visibility || "public");
+    setTags(initialPostData?.tags?.join(", ") || "");
+    setMedia(
+      (initialPostData?.media || []).map((item) => ({
+        preview: item.url,
+        type: item.type,
+        existing: true,
+      }))
+    );
+    setError("");
   }, [initialPostData, isOpen]);
 
-  const resetForm = () => {
-    setCaption("");
-    setMedia([]);
-    setVisibility("public");
-    setTags("");
-    setError("");
+  const close = () => {
+    if (loading) return;
+    onClose();
   };
 
-  const handleMediaChange = (e) => {
-    const files = Array.from(e.target.files);
+  const handleMediaChange = (event) => {
+    const files = Array.from(event.target.files || []);
+    const nextMedia = files.map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+      type: file.type.startsWith("video") ? "video" : "image",
+      existing: false,
+    }));
+    const combinedMedia = [...media, ...nextMedia];
+    const imageCount = combinedMedia.filter((item) => item.type === "image").length;
+    const videoCount = combinedMedia.filter((item) => item.type === "video").length;
 
-    let images = [];
-    let videos = [];
-
-    for (let file of files) {
-      const type = file.type.startsWith("video") ? "video" : "image";
-      const preview = URL.createObjectURL(file);
-      const formatted = { file, preview, type };
-
-      if (type === "image") {
-        images.push(formatted);
-      } else if (type === "video") {
-        videos.push(formatted);
-      }
+    if (videoCount > 1) {
+      setError("Choose one video at a time.");
+      return;
+    }
+    if (imageCount > 6) {
+      setError("Choose up to six images.");
+      return;
+    }
+    if (videoCount && imageCount) {
+      setError("Choose images or one video, not both.");
+      return;
     }
 
-    if (videos.length > 1) return setError("You can only upload 1 video.");
-    if (images.length > 6) return setError("Max 6 images allowed.");
-    if (videos.length && images.length)
-      return setError("Cannot upload images and video together.");
-
     setError("");
-    setMedia([...images, ...videos]);
+    setMedia(combinedMedia);
+  };
+
+  const removeMedia = (index) => {
+    setMedia((current) => current.filter((_, itemIndex) => itemIndex !== index));
   };
 
   const handleSubmit = async () => {
-    if (!!error || (!caption && media.length === 0)) return;
-
+    if (loading || error || (!caption.trim() && media.length === 0)) return;
     setLoading(true);
+    setError("");
+
     const formData = new FormData();
-    formData.append("caption", caption);
+    formData.append("caption", caption.trim());
     formData.append("visibility", visibility);
     formData.append("tags", tags);
-
+    formData.append(
+      "existingMedia",
+      JSON.stringify(
+        media
+          .filter((item) => item.existing)
+          .map((item) => ({ url: item.preview, type: item.type }))
+      )
+    );
     media.forEach((item) => {
       if (!item.existing) formData.append("media", item.file);
     });
 
     try {
-      let res;
-      if (initialPostData) {
-        // EDIT MODE
-        res = await api.patch(`/post/${initialPostData._id}`, formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-      } else {
-        // CREATE MODE
-        res = await api.post("/post", formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-      }
-
-      console.log("✅ Success:", res.data);
-      resetForm();
-      onSubmit?.();
+      const response = initialPostData
+        ? await api.patch(`/post/${initialPostData._id}`, formData)
+        : await api.post("/post", formData);
+      onSubmit?.(response.data.post || response.data);
       onClose();
     } catch (err) {
-      console.error("❌ Failed:", err.response?.data || err.message);
-      setError(err.response?.data?.error || "Something went wrong.");
+      setError(err.response?.data?.error || "The post could not be saved.");
     } finally {
       setLoading(false);
     }
@@ -107,86 +112,130 @@ export default function PostFormModal({ isOpen, onClose, onSubmit, initialPostDa
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-2 backdrop-blur-sm bg-black/50">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg p-4 sm:p-6 relative border border-gray-300 dark:border-gray-700">
-        <button onClick={() => { resetForm(); onClose(); }} className="absolute top-3 right-3 text-gray-400 hover:text-red-500">
-          <X className="w-5 h-5" />
-        </button>
-
-        <h2 className="text-xl font-semibold mb-4 text-center text-gray-900 dark:text-white">
-          {initialPostData ? "Edit Post" : "Create a Post"}
-        </h2>
-
-        <EmojiTextArea value={caption} onChange={setCaption} />
-
-        {media.length === 1 ? (
-          <div className="mt-4 max-h-[50vh] overflow-hidden rounded-lg border border-gray-300 dark:border-gray-700">
-            {media[0].type === "image" ? (
-              <img src={media[0].preview} alt="preview" className="max-h-[50vh] w-auto mx-auto object-contain rounded" />
-            ) : (
-              <video src={media[0].preview} controls className="max-h-[50vh] w-full object-contain rounded" />
-            )}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3 py-5">
+      <div className="surface max-h-[92vh] w-full max-w-xl overflow-y-auto shadow-2xl">
+        <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-black/[0.08] bg-white px-4 dark:border-white/[0.09] dark:bg-[#15171b]">
+          <div>
+            <h2 className="font-bold">{initialPostData ? "Edit post" : "Create post"}</h2>
+            <p className="text-xs text-zinc-500">Share an update with your community</p>
           </div>
-        ) : (
-          <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {media.map((m, i) => (
-              <div key={i} className="w-full aspect-square overflow-hidden rounded-lg border border-gray-300 dark:border-gray-700">
-                {m.type === "image" ? (
-                  <img src={m.preview} alt={`preview-${i}`} className="w-full h-full object-cover" />
-                ) : (
-                  <video src={m.preview} controls className="w-full h-full object-cover" />
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+          <button onClick={close} className="icon-button" title="Close">
+            <X className="h-5 w-5" />
+          </button>
+        </header>
 
-        <input
-          type="file"
-          accept="image/*,video/*"
-          multiple
-          onChange={handleMediaChange}
-          className="mt-4 w-full text-sm text-gray-500 dark:text-gray-400"
-        />
-        {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+        <div className="space-y-5 p-4 sm:p-5">
+          <EmojiTextArea
+            value={caption}
+            onChange={setCaption}
+            placeholder="What would you like to share?"
+          />
 
-        <select
-          value={visibility}
-          onChange={(e) => setVisibility(e.target.value)}
-          className="w-full mt-4 p-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-100 dark:bg-gray-800 text-black dark:text-white"
-        >
-          <option value="public">Public</option>
-          <option value="friends">Friends</option>
-          <option value="private">Private</option>
-        </select>
+          {media.length > 0 && (
+            <div className={`grid gap-2 ${media.length === 1 ? "grid-cols-1" : "grid-cols-2 sm:grid-cols-3"}`}>
+              {media.map((item, index) => (
+                <div
+                  key={`${item.preview}-${index}`}
+                  className="relative aspect-square overflow-hidden rounded-md bg-black/[0.04] dark:bg-black/20"
+                >
+                  {item.type === "video" ? (
+                    <video src={item.preview} controls className="h-full w-full object-contain" />
+                  ) : (
+                    <img src={item.preview} alt="" className="h-full w-full object-cover" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeMedia(index)}
+                    className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-black/70 text-white"
+                    title="Remove media"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
-        <input
-          type="text"
-          placeholder="Add tags separated by commas"
-          value={tags}
-          onChange={(e) => setTags(e.target.value)}
-          className="w-full mt-4 p-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-100 dark:bg-gray-800 text-black dark:text-white"
-        />
+          <label className="flex cursor-pointer items-center justify-between rounded-md border border-dashed border-black/[0.16] p-4 transition hover:border-[#e23d58] hover:bg-[#e23d58]/[0.03] dark:border-white/[0.16]">
+            <span className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-md bg-[#e23d58]/10 text-[#e23d58]">
+                <ImagePlus className="h-5 w-5" />
+              </span>
+              <span>
+                <span className="block text-sm font-bold">Add photos or video</span>
+                <span className="block text-xs text-zinc-500">Up to 6 images or 1 video</span>
+              </span>
+            </span>
+            <input
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              onChange={handleMediaChange}
+              className="sr-only"
+            />
+          </label>
 
-        <button
-          onClick={handleSubmit}
-          disabled={!!error || (!caption && media.length === 0)}
-          className={`mt-6 w-full ${
-            !!error || (!caption && media.length === 0)
-              ? "bg-gray-400 cursor-not-allowed"
-              : "bg-blue-600 hover:bg-blue-700"
-          } text-white py-2 rounded-lg text-sm font-medium`}
-        >
-          {loading ? "Posting..." : initialPostData ? "Update" : "Post"}
-        </button>
-      </div>
+          <fieldset>
+            <legend className="mb-2 text-sm font-bold">Who can see this?</legend>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {visibilityOptions.map((option) => {
+                const VisibilityIcon = option.Icon;
+                return (
+                <label
+                  key={option.value}
+                  className={`cursor-pointer rounded-md border p-3 transition ${
+                    visibility === option.value
+                      ? "border-[#e23d58] bg-[#e23d58]/[0.05]"
+                      : "border-black/[0.1] hover:bg-black/[0.03] dark:border-white/[0.1] dark:hover:bg-white/[0.04]"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="visibility"
+                    value={option.value}
+                    checked={visibility === option.value}
+                    onChange={(event) => setVisibility(event.target.value)}
+                    className="sr-only"
+                  />
+                  <VisibilityIcon className="mb-2 h-4 w-4" />
+                  <span className="block text-sm font-bold">{option.label}</span>
+                  <span className="block text-xs text-zinc-500">{option.description}</span>
+                </label>
+                );
+              })}
+            </div>
+          </fieldset>
 
-      {loading && (
-        <div className="absolute inset-0 bg-white/80 dark:bg-black/80 flex items-center justify-center rounded-2xl z-50">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          <span className="ml-2 text-gray-700 dark:text-white font-medium">Posting...</span>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-bold">Tags</span>
+            <input
+              value={tags}
+              onChange={(event) => setTags(event.target.value)}
+              className="field"
+              placeholder="travel, friends, weekend"
+            />
+          </label>
+
+          {error && (
+            <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {error}
+            </p>
+          )}
         </div>
-      )}
+
+        <footer className="sticky bottom-0 flex justify-end gap-2 border-t border-black/[0.08] bg-white p-4 dark:border-white/[0.09] dark:bg-[#15171b]">
+          <button onClick={close} className="btn-secondary">
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading || Boolean(error) || (!caption.trim() && media.length === 0)}
+            className="btn-primary min-w-28"
+          >
+            {loading ? "Saving..." : initialPostData ? "Save changes" : "Publish"}
+          </button>
+        </footer>
+      </div>
     </div>
   );
 }

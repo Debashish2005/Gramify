@@ -1,81 +1,85 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Newspaper } from "lucide-react";
+import { Toaster } from "react-hot-toast";
+import api from "../api/axios";
 import HeaderNav from "../components/header";
-import UserCard from "../components/user_post_card";
+import { EmptyState, PageSkeleton } from "../components/PageState";
 import PostCard from "../components/PostCard";
 import RightSidebar from "../components/RightSidebar";
-import { Toaster } from "react-hot-toast";
-import api from "../api/axios"; 
+import CreatePostComposer from "../components/user_post_card";
 
 export default function DashBoard() {
   const [feed, setFeed] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-useEffect(() => {
- const fetchFeed = async () => {
-  try {
-    const res = await api.get("/feed");
-    setFeed(res.data.feed);
-  } catch (err) {
-    console.error("Failed to fetch feed", err);
-  } finally {
-    setLoading(false); // whether success or fail
-  }
-};
+  const fetchFeed = async () => {
+    try {
+      setError("");
+      const res = await api.get("/feed");
+      setFeed(res.data.feed || []);
+    } catch (err) {
+      console.error("Failed to fetch feed", err);
+      setError("Your feed could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-
-  // Initial fetch
-  fetchFeed();
-
-  // Refresh feed every 5 seconds
-  const interval = setInterval(fetchFeed, 5000);
-
-  // Cleanup
-  return () => clearInterval(interval);
-}, []);
-useEffect(() => {
-  const saved = localStorage.getItem("theme");
-  if (saved === "dark") {
-    document.documentElement.classList.add("dark");
-  } else {
-    document.documentElement.classList.remove("dark");
-  }
-}, []);
+  useEffect(() => {
+    fetchFeed();
+  }, []);
 
   return (
-    <>
+    <div className="app-bg pb-20 md:pb-0">
       <Toaster position="top-center" />
-      <div className="flex flex-col min-h-screen bg-gray-100 dark:bg-gray-900">
-        {/* Header */}
-        <HeaderNav />
+      <HeaderNav />
 
-        <div className="mx-auto flex w-full max-w-7xl flex-1 items-start gap-6 px-0 xl:px-6">
-          <div className="min-w-0 flex-1 overflow-y-auto">
-            <UserCard />
-        <div className="flex flex-col">
-  {loading ? (
-    <div className="p-4 space-y-4 animate-pulse">
-      {[...Array(3)].map((_, i) => (
-        <div key={i} className="bg-white dark:bg-gray-800 rounded-md p-4 shadow">
-          <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-1/3 mb-2"></div>
-          <div className="h-3 bg-gray-300 dark:bg-gray-700 rounded mb-1 w-3/4"></div>
-          <div className="h-3 bg-gray-300 dark:bg-gray-700 rounded mb-1 w-2/4"></div>
-          <div className="h-48 bg-gray-300 dark:bg-gray-700 rounded mt-2"></div>
-        </div>
-      ))}
-    </div>
-  ) : feed.length === 0 ? (
-    <div className="text-center text-gray-500 p-6">
-      No posts to show
-    </div>
-  ) : (
-    feed.map((post) => <PostCard key={post._id} post={post} />)
-  )}
-</div>
+      <main className="page-wrap py-5 sm:py-7">
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,720px)_320px] xl:justify-center">
+          <section className="min-w-0 space-y-4">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <p className="eyebrow">Your community</p>
+                <h1 className="section-title mt-1">Home feed</h1>
+              </div>
+              <button onClick={fetchFeed} className="btn-ghost">
+                Refresh
+              </button>
+            </div>
 
-          </div>
+            <CreatePostComposer onCreated={fetchFeed} />
+
+            {loading ? (
+              <PageSkeleton />
+            ) : error ? (
+              <EmptyState
+                icon={Newspaper}
+                title="Feed unavailable"
+                description={error}
+                action={
+                  <button onClick={fetchFeed} className="btn-primary">
+                    Try again
+                  </button>
+                }
+              />
+            ) : feed.length === 0 ? (
+              <EmptyState
+                icon={Newspaper}
+                title="Your feed is ready for its first post"
+                description="Create a post or follow people to start seeing updates here."
+              />
+            ) : (
+              <div className="space-y-4">
+                {feed.map((post) => (
+                  <PostCard key={post._id} post={post} onDeleted={fetchFeed} />
+                ))}
+              </div>
+            )}
+          </section>
           <RightSidebar />
         </div>
-      </div>
-    </>
+      </main>
+    </div>
   );
 }

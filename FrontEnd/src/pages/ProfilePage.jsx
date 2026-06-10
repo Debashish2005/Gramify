@@ -1,432 +1,373 @@
-import { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import { Settings, LogOut, ChevronLeft, ChevronRight, X } from "lucide-react";
-import Header from "../components/header";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Clock3,
+  Grid3X3,
+  LogOut,
+  MessageCircle,
+  Moon,
+  Settings,
+  Sun,
+  UserCheck,
+  UserPlus,
+  UserRound,
+  X,
+} from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
+import toast from "react-hot-toast";
 import api from "../api/axios";
-import PostCard from "../components/PostCard";
 import EditProfileForm from "../components/EditProfileForm";
-
+import HeaderNav from "../components/header";
+import { EmptyState } from "../components/PageState";
+import PostCard from "../components/PostCard";
 
 export default function ProfilePage() {
   const { username } = useParams();
   const navigate = useNavigate();
   const settingsRef = useRef(null);
-
-  const [darkMode, setDarkMode] = useState(() =>
-    document.documentElement.classList.contains("dark")
-  );
   const [currentUser, setCurrentUser] = useState(null);
   const [profileUser, setProfileUser] = useState(null);
-  const [feedPosts, setFeedPosts] = useState([]);
-  const [isCurrentUser, setIsCurrentUser] = useState(false);
-  const [showEditForm, setShowEditForm] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [followStatus, setFollowStatus] = useState("none");
-  const [currentPostIndex, setCurrentPostIndex] = useState(null);
+  const [posts, setPosts] = useState([]);
   const [postCount, setPostCount] = useState(0);
+  const [followStatus, setFollowStatus] = useState("none");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [selectedPost, setSelectedPost] = useState(null);
+  const [isDark, setIsDark] = useState(
+    document.documentElement.classList.contains("dark")
+  );
+
+  const loadProfile = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    setProfileUser(null);
+    try {
+      const [meRes, profileRes] = await Promise.all([
+        api.get("/me"),
+        api.get(`/profile/${username}`),
+      ]);
+      const me = meRes.data.user;
+      const profile = profileRes.data.user;
+      const isMe = me.username === profile.username;
+
+      setCurrentUser(me);
+      setProfileUser(profile);
+      setFollowStatus(profile.followStatus || "none");
+
+      const postsRes = isMe
+        ? await api.get("/my-posts")
+        : await api.get(`/user-posts/${username}`);
+      setPosts(postsRes.data.posts || []);
+      setPostCount(postsRes.data.postCount ?? postsRes.data.posts?.length ?? 0);
+    } catch (err) {
+      console.error("Failed to load profile", err);
+      setError(
+        err.response?.status === 404
+          ? "This profile does not exist."
+          : "This profile could not be loaded."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [username]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("theme");
-    if (saved === "dark") {
-      document.documentElement.classList.add("dark");
-      setDarkMode(true);
-    } else {
-      document.documentElement.classList.remove("dark");
-      setDarkMode(false);
-    }
-  }, []);
-
-  const toggleTheme = () => {
-    const html = document.documentElement;
-    if (html.classList.contains("dark")) {
-      html.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-      setDarkMode(false);
-    } else {
-      html.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-      setDarkMode(true);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await api.post("/logout");
-      navigate("/login");
-    } catch (error) {
-      console.error("Logout failed:", error);
-    }
-  };
-
-useEffect(() => {
-  const fetchData = async () => {
-    try {
-      const meRes = await api.get("/me");
-      const currentUser = meRes.data.user;
-      setCurrentUser(currentUser);
-
-      const profileRes = await api.get(`/profile/${username}`);
-      const profileUser = profileRes.data.user;
-      setProfileUser(profileUser);
-
-      const isMe = currentUser.username === profileUser.username;
-      setIsCurrentUser(isMe);
-      setFollowStatus(profileUser.followStatus);
-
-      if (isMe) {
-        const postsRes = await api.get("/my-posts");
-        setFeedPosts(postsRes.data.posts);
-        setPostCount(postsRes.data.posts.length);
-      } else {
-        try {
-          const postsRes = await api.get(`/user-posts/${username}`);
-          setPostCount(postsRes.data.postCount);
-          setFeedPosts(postsRes.data.posts || []);
-        } catch (err) {
-          // If 403, we still want to extract postCount from error response
-          if (err.response && err.response.status === 403) {
-            setPostCount(err.response.data.postCount || 0);
-            setFeedPosts([]); // Can't see posts, so empty
-          } else {
-            throw err; // For any other error
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Error loading profile:", err);
-    }
-  };
-
-  fetchData();
-}, [username]);
-
-
-
-  const handleFollow = async () => {
-    try {
-      await api.post(`/follow-request/${profileUser._id}`);
-      setFollowStatus("requested");
-    } catch (err) {
-      console.error("Follow error:", err);
-    }
-  };
-
-  const handleUnfollow = async () => {
-    try {
-      await api.post(`/unfollow/${profileUser._id}`);
-      setFollowStatus("none");
-    } catch (err) {
-      console.error("Unfollow error:", err);
-    }
-  };
+    loadProfile();
+  }, [loadProfile]);
 
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (settingsRef.current && !settingsRef.current.contains(e.target)) {
+    const closeSettings = (event) => {
+      if (settingsRef.current && !settingsRef.current.contains(event.target)) {
         setShowSettings(false);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", closeSettings);
+    return () => document.removeEventListener("mousedown", closeSettings);
   }, []);
 
-if (!profileUser) {
-  return (
-    <div className="min-h-screen pt-16 bg-white dark:bg-black p-4 text-black dark:text-white">
-      <div className="flex gap-6 items-start animate-pulse">
-        <div className="w-28 h-28 rounded-full bg-gray-300 dark:bg-gray-700" />
-        <div className="flex-1 space-y-4">
-          <div className="h-5 w-1/3 bg-gray-300 dark:bg-gray-700 rounded" />
-          <div className="h-4 w-1/2 bg-gray-300 dark:bg-gray-700 rounded" />
-          <div className="flex gap-4 text-sm">
-            <div className="h-4 w-16 bg-gray-300 dark:bg-gray-700 rounded" />
-            <div className="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded" />
-            <div className="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded" />
+  const isCurrentUser = currentUser?.username === profileUser?.username;
+
+  const updateFollow = async (action) => {
+    if (!profileUser || actionLoading) return;
+    setActionLoading(true);
+    try {
+      if (action === "follow") {
+        await api.post(`/follow-request/${profileUser._id}`);
+      } else {
+        await api.post(`/unfollow/${profileUser._id}`);
+      }
+    } catch (err) {
+      const knownStateError = ["Already following", "Follow request already sent"].includes(
+        err.response?.data?.error
+      );
+      if (!knownStateError) toast.error(err.response?.data?.error || "Could not update follow status");
+    } finally {
+      await loadProfile();
+      setActionLoading(false);
+    }
+  };
+
+  const toggleTheme = () => {
+    const nextDark = !document.documentElement.classList.contains("dark");
+    document.documentElement.classList.toggle("dark", nextDark);
+    localStorage.setItem("theme", nextDark ? "dark" : "light");
+    setIsDark(nextDark);
+  };
+
+  const logout = async () => {
+    await api.post("/logout");
+    navigate("/login");
+  };
+
+  if (loading) {
+    return (
+      <div className="app-bg">
+        <HeaderNav />
+        <main className="page-wrap py-8">
+          <div className="surface mx-auto max-w-4xl p-6">
+            <div className="flex items-center gap-5">
+              <div className="skeleton h-24 w-24 rounded-full" />
+              <div className="flex-1 space-y-3">
+                <div className="skeleton h-5 w-36" />
+                <div className="skeleton h-4 w-52" />
+                <div className="skeleton h-4 w-64" />
+              </div>
+            </div>
           </div>
-        </div>
+        </main>
       </div>
+    );
+  }
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-8 animate-pulse">
-        {Array(8)
-          .fill(0)
-          .map((_, i) => (
-            <div
-              key={i}
-              className="w-full aspect-square bg-gray-300 dark:bg-gray-700 rounded-md"
+  if (!profileUser) {
+    return (
+      <div className="app-bg pb-20 md:pb-0">
+        <HeaderNav />
+        <main className="page-wrap py-8">
+          <div className="mx-auto max-w-3xl">
+            <EmptyState
+              icon={UserRound}
+              title="Profile unavailable"
+              description={error || "This profile could not be loaded."}
+              action={
+                <button onClick={() => navigate("/dashboard")} className="btn-primary">
+                  Back to home
+                </button>
+              }
             />
-          ))}
+          </div>
+        </main>
       </div>
-    </div>
-  );
-}
-
-
-
-
-
-
+    );
+  }
 
   return (
-    <div className={darkMode ? "dark" : ""}>
-      <div className="min-h-screen bg-white text-black dark:bg-black dark:text-white transition-colors duration-300">
-        <Header />
+    <div className="app-bg pb-20 md:pb-0">
+      <HeaderNav />
+      <main className="page-wrap py-6 sm:py-8">
+        <section className="surface mx-auto max-w-5xl overflow-visible">
+          <div className="h-24 bg-[#17181c] dark:bg-[#25282f]" />
+          <div className="px-4 pb-6 sm:px-7">
+            <div className="-mt-12 flex flex-col gap-5 sm:flex-row sm:items-end">
+              <img
+                src={profileUser.dp || "/default-avatar.png"}
+                alt=""
+                className="avatar h-24 w-24 border-4 border-white shadow-sm dark:border-[#15171b] sm:h-28 sm:w-28"
+              />
+              <div className="min-w-0 flex-1 sm:pb-1">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h1 className="truncate text-2xl font-black">{profileUser.name}</h1>
+                    <p className="text-sm text-zinc-500">@{profileUser.username}</p>
+                  </div>
 
-        <div className="p-4 flex flex-row items-start gap-6 relative">
-          <img
-            src={profileUser.dp || "/profile.jpg"}
-            alt="Profile"
-            className="w-28 h-28 rounded-full object-cover"
-          />
-          <div className="flex-1">
-            <div className="flex items-center gap-4">
-              <h2 className="text-xl font-bold">{profileUser.username}</h2>
-
-              {isCurrentUser && (
-                <div ref={settingsRef} className="relative">
-                  <button onClick={() => setShowSettings(!showSettings)}>
-                    <Settings className="w-5 h-5" />
-                  </button>
-
-                  {showSettings && (
-                <div className="absolute top-8 right-0 w-60 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-2xl shadow-xl p-4 z-10 text-sm">
-  {/* Theme Toggle */}
-  <div className="flex items-center justify-between mb-4">
-    <span className="font-medium text-gray-700 dark:text-gray-200">
-      Theme: {darkMode ? "Dark" : "Light"}
-    </span>
-<button
-  onClick={toggleTheme}
-  className="relative w-12 h-6 bg-gray-300 dark:bg-gray-600 rounded-full transition-colors duration-300"
->
-  <div
-    className={`absolute top-0.5 w-5 h-5 rounded-full shadow-md transition-transform duration-300 ${
-      darkMode
-        ? "translate-x-6 bg-gray-100"
-        : "translate-x-1 bg-white"
-    }`}
-  />
-</button>
-
-  </div>
-
-  {/* Divider */}
-  <div className="border-t border-gray-200 dark:border-gray-700 mb-3"></div>
-
-  {/* Logout */}
-  <button
-    onClick={handleLogout}
-    className="w-full flex items-center gap-2 px-2 py-2 rounded-md text-gray-700 dark:text-gray-300 hover:bg-red-50 dark:hover:bg-red-900 hover:text-red-600 transition-colors"
-  >
-    <LogOut className="w-5 h-5" />
-    <span>Logout</span>
-  </button>
-</div>
-
+                  {isCurrentUser ? (
+                    <div className="relative flex gap-2" ref={settingsRef}>
+                      <button onClick={() => setShowEditForm(true)} className="btn-secondary">
+                        Edit profile
+                      </button>
+                      <button
+                        onClick={() => setShowSettings((open) => !open)}
+                        className="icon-button border border-black/[0.12] dark:border-white/[0.14]"
+                        title="Profile settings"
+                      >
+                        <Settings className="h-5 w-5" />
+                      </button>
+                      {showSettings && (
+                        <div className="surface absolute right-0 top-12 z-20 w-56 p-1 shadow-xl">
+                          <button onClick={toggleTheme} className="btn-ghost w-full justify-start">
+                            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                            {isDark ? "Use light theme" : "Use dark theme"}
+                          </button>
+                          <button
+                            onClick={logout}
+                            className="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                          >
+                            <LogOut className="h-4 w-4" />
+                            Log out
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {followStatus === "following" ? (
+                        <button
+                          onClick={() => updateFollow("unfollow")}
+                          disabled={actionLoading}
+                          className="btn-secondary"
+                        >
+                          <UserCheck className="h-4 w-4" />
+                          Following
+                        </button>
+                      ) : followStatus === "requested" ? (
+                        <button disabled className="btn-secondary">
+                          <Clock3 className="h-4 w-4" />
+                          Requested
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => updateFollow("follow")}
+                          disabled={actionLoading}
+                          className="btn-primary"
+                        >
+                          <UserPlus className="h-4 w-4" />
+                          Follow
+                        </button>
+                      )}
+                      <button
+                        onClick={() =>
+                          navigate("/messages", {
+                            state: {
+                              userId: profileUser._id,
+                              name: profileUser.username,
+                              dp: profileUser.dp,
+                            },
+                          })
+                        }
+                        className="btn-secondary"
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                        Message
+                      </button>
+                    </div>
                   )}
                 </div>
-              )}
+              </div>
             </div>
 
-            <h1 className="mt-2 text-xl font-semibold">{profileUser.name}</h1>
+            {profileUser.bio && (
+              <p className="mt-5 max-w-2xl whitespace-pre-wrap text-sm leading-6 text-zinc-700 dark:text-zinc-300">
+                {profileUser.bio}
+              </p>
+            )}
 
-            <div className="mt-2 flex gap-2">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2 mt-2">
-  {isCurrentUser ? (
-    <button
-      onClick={() => setShowEditForm(true)}
-      className="px-4 py-1 text-sm border rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
-    >
-      Edit Profile
-    </button>
-  ) : (
-    <>
-      {followStatus === "following" ? (
-        <>
-          {/* Row for [Following] and [Message] on all screen sizes */}
-          <div className="flex gap-2">
-            <button
-              className="px-4 py-1 text-sm rounded-md border bg-gray-300 text-black dark:bg-gray-700 dark:text-white cursor-default"
-              disabled
-            >
-              Following
-            </button>
+            <div className="mt-5 flex flex-wrap gap-6 border-t border-black/[0.07] pt-5 text-sm dark:border-white/[0.08]">
+              <span>
+                <strong>{postCount}</strong> <span className="text-zinc-500">posts</span>
+              </span>
+              <span>
+                <strong>{profileUser.followers?.length || 0}</strong>{" "}
+                <span className="text-zinc-500">followers</span>
+              </span>
+              <span>
+                <strong>{profileUser.following?.length || 0}</strong>{" "}
+                <span className="text-zinc-500">following</span>
+              </span>
+            </div>
+          </div>
+        </section>
 
-{profileUser && (
-  <button
-    onClick={() =>
-      navigate("/messages", {
-        state: {
-          userId: profileUser._id,
-          name: profileUser.username,
-          dp: profileUser.dp,
-        },
-      })
-    }
-    className="px-4 py-1 text-sm border rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
-  >
-    Message
-  </button>
-)}
-
+        <section className="mx-auto mt-6 max-w-5xl">
+          <div className="mb-4 flex items-center gap-2">
+            <Grid3X3 className="h-4 w-4" />
+            <h2 className="font-bold">Posts</h2>
+            {!isCurrentUser && followStatus !== "following" && (
+              <span className="ml-auto text-xs text-zinc-500">Showing public posts</span>
+            )}
           </div>
 
-          {/* Unfollow always below on mobile, right on desktop */}
-          <div className="mt-2 sm:mt-0 sm:ml-2">
+          {posts.length ? (
+            <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+              {posts.map((post) => {
+                const media = post.media?.[0];
+                return (
+                  <button
+                    key={post._id}
+                    onClick={() => setSelectedPost(post)}
+                    className="group relative aspect-square overflow-hidden bg-zinc-200 dark:bg-zinc-800"
+                    aria-label="Open post"
+                  >
+                    {media?.type === "video" ? (
+                      <video src={media.url} muted className="h-full w-full object-cover" />
+                    ) : media?.url ? (
+                      <img src={media.url} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="grid h-full place-items-center p-4 text-sm text-zinc-500">
+                        {post.caption || "Text post"}
+                      </span>
+                    )}
+                    <span className="absolute inset-0 bg-black/0 transition group-hover:bg-black/15" />
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState
+              icon={Grid3X3}
+              title={isCurrentUser ? "No posts yet" : "No visible posts"}
+              description={
+                isCurrentUser
+                  ? "Your posts will appear here after you publish them."
+                  : "This person has not shared any posts you can view."
+              }
+            />
+          )}
+        </section>
+      </main>
+
+      {selectedPost && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 px-3 py-6">
+          <div className="mx-auto max-w-2xl">
             <button
-              onClick={handleUnfollow}
-              className="px-4 py-1 text-sm border rounded-md text-red-600 hover:bg-red-600 hover:text-white transition"
+              onClick={() => setSelectedPost(null)}
+              className="icon-button fixed right-4 top-4 z-10 bg-black/60 text-white hover:bg-black/80 hover:text-white"
+              title="Close post"
             >
-              Unfollow
+              <X className="h-5 w-5" />
             </button>
+            <PostCard
+              post={selectedPost}
+              onDeleted={() => {
+                setSelectedPost(null);
+                loadProfile();
+              }}
+            />
           </div>
-        </>
-      ) : followStatus === "requested" ? (
-        <button
-          className="px-4 py-1 text-sm border rounded-md bg-gray-200 text-gray-500 cursor-not-allowed dark:bg-gray-800"
-          disabled
-        >
-          Requested
-        </button>
-      ) : (
-        <div className="flex flex-col sm:flex-row gap-2">
-          <button
-            onClick={handleFollow}
-            className="px-4 py-1 text-sm border rounded-md hover:bg-blue-500 hover:text-white"
-          >
-            Follow
-          </button>
-          <button
-    onClick={() =>
-      navigate("/messages", {
-        state: {
-          userId: profileUser._id,
-          name: profileUser.username,
-          dp: profileUser.dp,
-        },
-      })
-    }
-    className="px-4 py-1 text-sm border rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
-  >
-    Message
-  </button>
         </div>
       )}
-    </>
-  )}
-</div>
- </div>
 
-            <p className="mt-1 text-sm">{profileUser.bio}</p>
-
-            <div className="flex gap-4 text-sm mt-2">
-              <span>
-                <strong>{postCount}</strong> posts
-              </span>
-              <span>
-                <strong>{profileUser.followers.length}</strong> followers
-              </span>
-              <span>
-                <strong>{profileUser.following.length}</strong> following
-              </span>
+      {showEditForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6">
+          <div className="surface max-h-[90vh] w-full max-w-lg overflow-y-auto shadow-2xl">
+            <div className="flex h-14 items-center justify-between border-b border-black/[0.08] px-4 dark:border-white/[0.09]">
+              <h2 className="font-bold">Edit profile</h2>
+              <button onClick={() => setShowEditForm(false)} className="icon-button" title="Close">
+                <X className="h-5 w-5" />
+              </button>
             </div>
+            <EditProfileForm
+              userData={profileUser}
+              onUpdate={(updatedUser) => {
+                setProfileUser(updatedUser);
+                setShowEditForm(false);
+              }}
+            />
           </div>
         </div>
-
-        {(isCurrentUser || followStatus === "following") ? (
-          <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {feedPosts.map((post, index) => {
-              const media = post.media[0];
-              return (
-                <div
-                  key={post._id}
-                  onClick={() => setCurrentPostIndex(index)}
-                  className="w-full aspect-square rounded-md overflow-hidden cursor-pointer"
-                >
-                  {media?.type === "video" ? (
-                    <video
-                      src={media.url}
-                      className="w-full h-full object-cover"
-                      muted
-                      autoPlay
-                      loop
-                    />
-                  ) : (
-                    <img
-                      src={media?.url}
-                      alt="Post"
-                      className="w-full h-full object-cover"
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-center text-sm text-gray-500 mt-8">
-            This account is private. Follow to see their posts.
-          </div>
-        )}
-
-        {currentPostIndex !== null && feedPosts[currentPostIndex] && (
-          <div className="fixed inset-0 z-50 bg-black bg-opacity-70 flex justify-center items-center px-4">
-            <div className="relative bg-white dark:bg-gray-900 rounded-md p-4 max-w-3xl w-full flex items-center justify-center">
-              <button
-                onClick={() => setCurrentPostIndex(null)}
-                className="absolute top-2 right-2 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <button
-                onClick={() =>
-                  setCurrentPostIndex((prev) => (prev > 0 ? prev - 1 : prev))
-                }
-                disabled={currentPostIndex === 0}
-                className="absolute left-2 top-1/2 -translate-y-1/2 bg-gray-200 p-2 rounded-full disabled:opacity-50"
-              >
-                <ChevronLeft />
-              </button>
-
-              <div className="w-full">
-                <PostCard post={feedPosts[currentPostIndex]} />
-              </div>
-
-              <button
-                onClick={() =>
-                  setCurrentPostIndex((prev) =>
-                    prev < feedPosts.length - 1 ? prev + 1 : prev
-                  )
-                }
-                disabled={currentPostIndex === feedPosts.length - 1}
-                className="absolute right-2 top-1/2 -translate-y-1/2 bg-gray-200 p-2 rounded-full disabled:opacity-50"
-              >
-                <ChevronRight />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {showEditForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-center items-center">
-            <div className="bg-white dark:bg-gray-900 p-4 rounded-xl shadow-xl w-full max-w-lg relative">
-              <button
-                className="absolute top-2 right-2 text-gray-600 hover:text-black dark:text-gray-300 dark:hover:text-white"
-                onClick={() => setShowEditForm(false)}
-              >
-                ×
-              </button>
-              <h2 className="text-lg font-semibold mb-4 dark:text-white">Edit Profile</h2>
-              <EditProfileForm
-                userData={profileUser}
-                onUpdate={(updatedUser) => {
-                  setProfileUser(updatedUser);
-                  setShowEditForm(false);
-                }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }

@@ -27,20 +27,38 @@ export default function Messages() {
   const [searchResults, setSearchResults] = useState([]);
   const [recentChats, setRecentChats] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const messagesEndRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
 
   const fetchConversations = useCallback(async () => {
     try {
+      setLoadError("");
       const res = await api.get("/conversations");
       setRecentChats(res.data);
     } catch (err) {
       console.error("Failed to load chats:", err);
+      setLoadError("Your conversations could not be loaded.");
     } finally {
       setLoadingUsers(false);
     }
   }, []);
+
+  const initializeUser = useCallback(async () => {
+    setLoadingUsers(true);
+    setLoadError("");
+    try {
+      const res = await api.get("/me");
+      setYourUserId(res.data.user.id);
+      socket.emit("join", res.data.user.id);
+      await fetchConversations();
+    } catch (err) {
+      console.error("Error fetching user:", err);
+      setLoadError("Messages could not be loaded. Please sign in again or retry.");
+      setLoadingUsers(false);
+    }
+  }, [fetchConversations]);
 
   const loadMessages = useCallback(async (user) => {
     try {
@@ -58,26 +76,13 @@ export default function Messages() {
       fetchConversations();
     } catch (err) {
       console.error("Error loading messages:", err);
+      setLoadError("This conversation could not be loaded.");
     }
   }, [fetchConversations]);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await api.get("/me");
-        setYourUserId(res.data.user.id);
-        socket.emit("join", res.data.user.id);
-      } catch (err) {
-        console.error("Error fetching user:", err);
-      }
-    };
-    fetchUser();
-  }, []);
-
-  useEffect(() => {
-    if (!yourUserId) return;
-    fetchConversations();
-  }, [fetchConversations, yourUserId]);
+    initializeUser();
+  }, [initializeUser]);
 
   useEffect(() => {
     const passedUser = location.state;
@@ -172,6 +177,7 @@ export default function Messages() {
       );
     } catch (err) {
       console.error("Search failed:", err);
+      setSearchResults([]);
     }
   };
 
@@ -182,9 +188,9 @@ export default function Messages() {
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white text-gray-950 dark:bg-gray-950 dark:text-white">
+    <div className="flex h-screen overflow-hidden bg-[#f6f7f9] text-[#17181c] dark:bg-[#0c0d10] dark:text-white">
       <aside
-        className={`w-full border-r border-gray-200 bg-white md:w-[360px] dark:border-gray-800 dark:bg-gray-900 ${
+        className={`w-full border-r border-black/[0.08] bg-white md:w-[360px] dark:border-white/[0.09] dark:bg-[#111317] ${
           selectedUser ? "hidden md:flex" : "flex"
         } flex-col`}
       >
@@ -206,7 +212,7 @@ export default function Messages() {
               value={searchQuery}
               onChange={(event) => handleSearch(event.target.value)}
               placeholder="Search people"
-              className="w-full rounded-md border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-800"
+              className="field min-h-10 bg-[#f2f3f5] py-2 pl-9 dark:bg-[#1b1e23]"
             />
           </div>
         </div>
@@ -217,6 +223,15 @@ export default function Messages() {
               {[0, 1, 2, 3].map((item) => (
                 <div key={item} className="h-16 rounded-md bg-gray-100 dark:bg-gray-800" />
               ))}
+            </div>
+          ) : loadError ? (
+            <div className="p-8 text-center">
+              <MessageCircle className="mx-auto h-8 w-8 text-zinc-400" />
+              <p className="mt-3 text-sm font-bold">Messages unavailable</p>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">{loadError}</p>
+              <button onClick={initializeUser} className="btn-secondary mt-4">
+                Try again
+              </button>
             </div>
           ) : conversationItems.length === 0 ? (
             <div className="p-8 text-center text-sm text-gray-500">
@@ -229,8 +244,8 @@ export default function Messages() {
                 onClick={() => loadMessages(chat)}
                 className={`flex w-full items-center gap-3 rounded-md p-3 text-left transition ${
                   selectedUser?.userId === chat.userId
-                    ? "bg-blue-50 dark:bg-gray-800"
-                    : "hover:bg-gray-50 dark:hover:bg-gray-800"
+                    ? "bg-[#e23d58]/10"
+                    : "hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
                 }`}
               >
                 <div className="relative shrink-0">
@@ -254,7 +269,7 @@ export default function Messages() {
                   <div className="flex items-center justify-between gap-2">
                     <p className="truncate text-sm text-gray-500">{chat.lastMessage || chat.displayName}</p>
                     {chat.unreadCount > 0 && (
-                      <span className="min-w-5 rounded-full bg-blue-600 px-1.5 py-0.5 text-center text-xs font-semibold text-white">
+                      <span className="min-w-5 rounded-full bg-[#e23d58] px-1.5 py-0.5 text-center text-xs font-semibold text-white">
                         {chat.unreadCount}
                       </span>
                     )}
@@ -290,7 +305,7 @@ export default function Messages() {
               </Link>
             </header>
 
-            <div className="flex-1 overflow-y-auto bg-gray-50 px-4 py-5 dark:bg-gray-950">
+            <div className="flex-1 overflow-y-auto bg-[#f6f7f9] px-4 py-5 dark:bg-[#0c0d10]">
               <div className="mx-auto max-w-3xl space-y-2">
                 {messages.map((message, index) => (
                   <MessageBubble
@@ -314,7 +329,7 @@ export default function Messages() {
                     />
                   </div>
                 )}
-                <div className="flex items-center gap-2 rounded-full border border-gray-300 px-3 py-2 focus-within:border-blue-500 dark:border-gray-700">
+                <div className="flex items-center gap-2 rounded-md border border-black/[0.13] bg-white px-3 py-2 focus-within:border-[#e23d58] dark:border-white/[0.14] dark:bg-[#111317]">
                   <button
                     onClick={() => setShowEmojiPicker((open) => !open)}
                     className="rounded-full p-1 text-gray-500 hover:text-yellow-500"
@@ -332,7 +347,7 @@ export default function Messages() {
                   <button
                     onClick={sendMessage}
                     disabled={!input.trim()}
-                    className="rounded-full bg-blue-600 p-2 text-white disabled:bg-gray-300 dark:disabled:bg-gray-700"
+                    className="rounded-md bg-[#e23d58] p-2 text-white hover:bg-[#ca304a] disabled:bg-gray-300 dark:disabled:bg-gray-700"
                     title="Send message"
                   >
                     <Send className="h-4 w-4" />
@@ -342,7 +357,7 @@ export default function Messages() {
             </footer>
           </>
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center bg-gray-50 text-center dark:bg-gray-950">
+          <div className="flex flex-1 flex-col items-center justify-center bg-[#f6f7f9] text-center dark:bg-[#0c0d10]">
             <div className="mb-4 rounded-full border border-gray-300 p-5 dark:border-gray-700">
               <MessageCircle className="h-9 w-9" />
             </div>
@@ -365,12 +380,12 @@ function MessageBubble({ message, isOwn, showSeen }) {
       <div
         className={`max-w-[82%] rounded-2xl px-4 py-2 text-sm md:max-w-md ${
           isOwn
-            ? "rounded-br-md bg-blue-600 text-white"
+            ? "rounded-br-md bg-[#e23d58] text-white"
             : "rounded-bl-md border border-gray-200 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
         }`}
       >
         <p className="whitespace-pre-wrap break-words">{message.content}</p>
-        <p className={`mt-1 text-right text-[10px] ${isOwn ? "text-blue-100" : "text-gray-400"}`}>
+        <p className={`mt-1 text-right text-[10px] ${isOwn ? "text-rose-100" : "text-gray-400"}`}>
           {time}
         </p>
       </div>

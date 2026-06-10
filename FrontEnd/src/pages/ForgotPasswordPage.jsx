@@ -1,66 +1,63 @@
-import React, { useState } from "react";
-import api from "../api/axios"; // Adjust the import based on your project structure
-const Input = React.forwardRef(({ className = "", ...props }, ref) => {
-  return (
-    <input
-      ref={ref}
-      className={`w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition ${className}`}
-      {...props}
-    />
-  );
-});
-
-const Button = React.forwardRef(({ className = "", children, ...props }, ref) => {
-  return (
-    <button
-      ref={ref}
-      className={`px-4 py-2 rounded-lg bg-pink-500 text-white hover:bg-pink-600 transition font-medium ${className}`}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-});
-
+import { useState } from "react";
+import { ArrowLeft, Mail } from "lucide-react";
+import { Link } from "react-router-dom";
+import Alert from "../components/alert";
+import AuthShell from "../components/AuthShell";
+import api from "../api/axios";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
-  const [message, setMessage] = useState(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  try {
-    const response = await api.post("/forgot-password", { email });
-    setMessage(response.data.message);
-  } catch (error) {
-    console.error(error);
-    setMessage("Something went wrong. Please try again.");
-  }
-};
-
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    setSubmitting(true);
+    try {
+      const response = await api.post("/forgot-password", { email });
+      setMessage(response.data.message);
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not send the reset link.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white p-8 rounded-lg shadow-md w-full max-w-md"
-      >
-        <h2 className="text-2xl font-bold text-center mb-6 text-pink-600">
-          Reset Your Password
-        </h2>
-        <Input
-          type="email"
-          placeholder="Enter your email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="mb-4"
-          required
-        />
-        <Button type="submit" className="w-full bg-pink-500 text-white">
-          Send Reset Link
-        </Button>
-        {message && <p className="mt-4 text-sm text-green-600">{message}</p>}
+    <AuthShell
+      title="Reset your password"
+      description="Enter the email connected to your account. We will send a secure reset link if it exists."
+      footer={
+        <Link to="/login" className="inline-flex items-center gap-2 text-sm font-bold text-[#e23d58]">
+          <ArrowLeft className="h-4 w-4" />
+          Back to sign in
+        </Link>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-semibold">Email</span>
+          <span className="relative block">
+            <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="field pl-10"
+              autoComplete="email"
+              required
+            />
+          </span>
+        </label>
+        {message && <Alert type="success" message={message} />}
+        {error && <Alert type="error" message={error} />}
+        <button type="submit" disabled={submitting} className="btn-primary w-full">
+          {submitting ? "Sending..." : "Send reset link"}
+        </button>
       </form>
-    </div>
+    </AuthShell>
   );
 }

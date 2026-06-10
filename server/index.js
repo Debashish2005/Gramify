@@ -173,10 +173,28 @@ async function createNotification(targetUserId, notification) {
   const targetUser = await UserModel.findById(targetUserId);
   if (!targetUser) return;
 
-  targetUser.notifications.push(notification);
+  const existingReaction =
+    notification.type === "reaction" && notification.post
+      ? targetUser.notifications.find(
+          (item) =>
+            item.type === "reaction" &&
+            item.from?.toString() === notification.from.toString() &&
+            item.post?.toString() === notification.post.toString()
+        )
+      : null;
+
+  if (existingReaction) {
+    existingReaction.reactionType = notification.reactionType;
+    existingReaction.message = notification.message;
+    existingReaction.createdAt = new Date();
+    existingReaction.isRead = false;
+  } else {
+    targetUser.notifications.push(notification);
+  }
   await targetUser.save();
 
-  const created = targetUser.notifications[targetUser.notifications.length - 1];
+  const created =
+    existingReaction || targetUser.notifications[targetUser.notifications.length - 1];
   const populated = await UserModel.populate(created, {
     path: "from",
     select: "username name dp",
@@ -453,7 +471,7 @@ app.post("/post", auth, upload.array("media", 7), async (req, res) => {
       user: req.user.id,
       caption,
       visibility,
-      tags: tags.split(",").map((t) => t.trim()),
+      tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
       media,
     });
 
@@ -469,7 +487,7 @@ app.patch("/post/:id", auth, upload.array("media", 7), async (req, res) => {
     const postId = req.params.id;
     const userId = req.user.id;
 
-    const { caption, visibility, tags } = req.body;
+    const { caption, visibility, tags, existingMedia } = req.body;
 
     // Prepare update object
     const updateData = {};
@@ -479,16 +497,20 @@ app.patch("/post/:id", auth, upload.array("media", 7), async (req, res) => {
       .split(",")
       .map((tag) => tag.trim());
 
-    // TODO: Handle new media upload if any (currently optional)
-    if (req.files && req.files.length > 0) {
-      // Optional: if you're using Cloudinary or local disk, upload the media files
-      // Then structure them like: [{ url: "some-url",type: "image/video" }, ...]
-      const uploadedMedia = req.files.map((file) => ({
-        url: file.path, // Upload and get the URL
+    if (existingMedia !== undefined || (req.files && req.files.length > 0)) {
+      let retainedMedia = [];
+      try {
+        retainedMedia = existingMedia ? JSON.parse(existingMedia) : [];
+      } catch {
+        return res.status(400).json({ error: "Invalid existing media data" });
+      }
+
+      const uploadedMedia = (req.files || []).map((file) => ({
+        url: file.path,
         type: file.mimetype.startsWith("video") ? "video" : "image",
       }));
 
-      updateData.media = uploadedMedia;
+      updateData.media = [...retainedMedia, ...uploadedMedia];
     }
 
     // Find and update post if owned by the user
@@ -582,6 +604,13 @@ app.post("/feed/:postId/react", auth, async (req, res) => {
   const { postId } = req.params;
   const userId = req.user.id;
   const types = ["like", "love", "smile", "sad", "angry"];
+  const reactionMessages = {
+    like: "liked your post",
+    love: "loved your post",
+    smile: "reacted with a smile to your post",
+    sad: "reacted to your post",
+    angry: "reacted to your post",
+  };
 
   if (!types.includes(type)) {
     return res.status(400).json({ error: "Invalid reaction type" });
@@ -590,7 +619,12 @@ app.post("/feed/:postId/react", auth, async (req, res) => {
   const post = await Post.findById(postId);
   if (!post) return res.status(404).json({ error: "Post not found" });
 
-  // Ensure reactions object exists
+  const previousType = types.find((reactionType) =>
+    (post.reactions[reactionType] || []).some(
+      (uid) => uid.toString() === userId
+    )
+  );
+
   types.forEach((t) => {
     post.reactions[t] = post.reactions[t] || [];
     post.reactions[t] = post.reactions[t].filter(
@@ -598,18 +632,36 @@ app.post("/feed/:postId/react", auth, async (req, res) => {
     );
   });
 
-  post.reactions[type] = [...(post.reactions[type] || []), userId];
+  const nextType = previousType === type ? null : type;
+  if (nextType) {
+    post.reactions[nextType] = [...(post.reactions[nextType] || []), userId];
+  }
   await post.save();
 
-  await createNotification(post.user, {
-    type: "reaction",
-    reactionType: type,
-    message: `reacted ${type} to your post`,
-    from: userId,
-    post: post._id,
-  });
+  if (nextType) {
+    await createNotification(post.user, {
+      type: "reaction",
+      reactionType: nextType,
+      message: reactionMessages[nextType],
+      from: userId,
+      post: post._id,
+    });
+  } else if (post.user.toString() !== userId) {
+    await UserModel.updateOne(
+      { _id: post.user },
+      {
+        $pull: {
+          notifications: {
+            type: "reaction",
+            from: userId,
+            post: post._id,
+          },
+        },
+      }
+    );
+  }
 
-  res.json({ reactions: post.reactions });
+  res.json({ reactions: post.reactions, userReaction: nextType });
 });
 
 app.get("/feed/:postId/reactions", auth, async (req, res) => {
@@ -813,7 +865,9 @@ app.get("/profile/:username",auth, async (req, res) => {
     );
 
     const hasRequested = user.followRequests?.some(
-      (r) => r.toString() === currentUser._id.toString()
+      (request) =>
+        request.from?.toString() === currentUser._id.toString() &&
+        request.status === "pending"
     );
 
     const followStatus = isFollowing
@@ -854,19 +908,21 @@ app.get("/user-posts/:username", auth, async (req, res) => {
 
     const currentUser = await UserModel.findById(req.user.id);
 
-    const isFollowing = profileUser.followers.includes(currentUser._id);
+    const isFollowing = profileUser.followers.some(
+      (followerId) => followerId.toString() === currentUser._id.toString()
+    );
+    const isOwner = profileUser._id.toString() === currentUser._id.toString();
     
     // ✅ Always get post count first
     const postCount = await Post.countDocuments({ user: profileUser._id });
 
-    if (!isFollowing && profileUser._id.toString() !== currentUser._id.toString()) {
-      return res.status(403).json({
-        error: "Not authorized to view posts",
-        postCount, // ✅ still return post count
-      });
-    }
+    const visibilityFilter = isOwner
+      ? {}
+      : isFollowing
+      ? { visibility: { $in: ["public", "friends"] } }
+      : { visibility: "public" };
 
-    const posts = await Post.find({ user: profileUser._id })
+    const posts = await Post.find({ user: profileUser._id, ...visibilityFilter })
       .sort({ createdAt: -1 })
       .populate("user", "username dp")
       .populate("comments.user", "username dp");
@@ -969,14 +1025,14 @@ app.get("/follow-status/:targetId", auth,async (req, res) => {
   const targetId = req.params.targetId;
 
   try {
- const targetUser = await UserModel.findOne({ targetId }).lean();
+ const targetUser = await UserModel.findById(targetId).lean();
 
 if (!targetUser) {
   return res.status(404).json({ error: "User not found" });
 }
 
 // Check if current user is already a follower
-if (targetUser.followers.includes(currentUserId)) {
+if (targetUser.followers.some((id) => id.toString() === currentUserId)) {
   return res.json({ status: "following" });
 }
 

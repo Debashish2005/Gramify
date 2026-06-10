@@ -1,50 +1,50 @@
-import React, { useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { Smile } from "lucide-react";
 import EmojiPicker from "emoji-picker-react";
 
-const EmojiTextArea = ({ value, onChange, placeholder = "What's on your mind?" }) => {
+export default function EmojiTextArea({
+  value,
+  onChange,
+  placeholder = "What is on your mind?",
+}) {
   const textareaRef = useRef(null);
   const [showPicker, setShowPicker] = useState(false);
 
-  const handleEmojiClick = (emojiData) => {
-    const emoji = emojiData.emoji;
+  const addEmoji = (emojiData) => {
     const textarea = textareaRef.current;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const newText = value.slice(0, start) + emoji + value.slice(end);
-    onChange(newText);
-
-    setTimeout(() => {
-      textarea.focus();
-      textarea.selectionStart = textarea.selectionEnd = start + emoji.length;
-    }, 0);
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? value.length;
+    const nextValue = value.slice(0, start) + emojiData.emoji + value.slice(end);
+    onChange(nextValue);
+    setTimeout(() => textarea?.focus(), 0);
   };
 
   return (
     <div className="relative">
       <textarea
         ref={textareaRef}
-        rows="3"
-        className="w-full p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-100 dark:bg-gray-800 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-        placeholder={placeholder}
+        rows={5}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="field min-h-32 resize-none pr-12 text-base leading-6"
       />
-
       <button
         type="button"
-        onClick={() => setShowPicker((prev) => !prev)}
-        className="absolute bottom-2 right-3 text-xl"
+        onClick={() => setShowPicker((open) => !open)}
+        className="icon-button absolute bottom-2 right-2 h-9 w-9"
+        title="Add emoji"
       >
-        😊
+        <Smile className="h-5 w-5" />
       </button>
-
       {showPicker && (
-        <div className="absolute bottom-12 right-0 z-50">
-          <EmojiPicker onEmojiClick={handleEmojiClick} theme="dark" />
+        <div className="absolute bottom-12 right-0 z-30 max-w-[calc(100vw-2rem)]">
+          <EmojiPicker
+            onEmojiClick={addEmoji}
+            theme={document.documentElement.classList.contains("dark") ? "dark" : "light"}
+          />
         </div>
       )}
     </div>
   );
-};
-
-export default EmojiTextArea;
+}

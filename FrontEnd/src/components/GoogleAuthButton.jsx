@@ -11,7 +11,7 @@ export default function GoogleAuthButton({ text = "signin_with" }) {
 
   if (!clientId) {
     return (
-      <p className="text-center text-sm text-gray-500">
+      <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-center text-sm text-amber-800">
         Google sign-in is not configured.
       </p>
     );
@@ -40,7 +40,7 @@ export default function GoogleAuthButton({ text = "signin_with" }) {
 
   return (
     <div className="w-full">
-      <div className="flex min-h-10 w-full justify-center">
+      <div className="flex min-h-11 w-full justify-center overflow-hidden rounded-md border border-black/[0.12] bg-white">
         <GoogleLogin
           onSuccess={handleSuccess}
           onError={() => setError("Google sign-in was cancelled or failed.")}

@@ -1,407 +1,302 @@
-import React, { useState,useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Bell, Home, MessageCircle, Plus, Search, UserRound } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import api from "../api/axios";
-import {
-  Home,
-  PlusSquare,
-  Bell,
-  MessageSquare,
-  Search,
-  User,
-} from "lucide-react";
-import { cloneElement } from "react";
-import PostFormModal from "./PostFormModal"; // adjust path if needed
 import socket from "../socket";
+import Brand from "./Brand";
+import PostFormModal from "./PostFormModal";
 
-// === Navigation Icon Component ===
-const NavIcon = ({ icon, badgeCount = 0 }) => {
+function Badge({ count }) {
+  if (!count) return null;
   return (
-    <div className="relative group cursor-pointer">
-      <div className="p-2 rounded-xl group-hover:bg-gray-100 transition duration-150 ease-in-out">
-        <div className="text-2xl text-gray-600 group-hover:text-black transition">
-          {icon}
-        </div>
-        {badgeCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 h-4 w-4 bg-red-500 text-white text-[10px] font-semibold rounded-full flex items-center justify-center">
-            {badgeCount}
-          </span>
-        )}
-      </div>
-    </div>
+    <span className="absolute -right-1 -top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-[#e23d58] px-1 text-[10px] font-bold leading-4 text-white">
+      {count > 99 ? "99+" : count}
+    </span>
   );
-};
+}
+
+function NavItem({ to, icon, label, active, badgeCount = 0, onClick }) {
+  const IconComponent = icon;
+  const content = (
+    <>
+      <span className="relative">
+        <IconComponent className="h-5 w-5" strokeWidth={active ? 2.5 : 1.9} />
+        <Badge count={badgeCount} />
+      </span>
+      <span className="hidden lg:block">{label}</span>
+      <span
+        className={`absolute inset-x-3 -bottom-[13px] h-0.5 rounded-full bg-[#e23d58] transition-opacity ${
+          active ? "opacity-100" : "opacity-0"
+        }`}
+      />
+    </>
+  );
+
+  const className = `relative flex h-10 min-w-10 items-center justify-center gap-2 rounded-md px-3 text-sm font-semibold transition ${
+    active
+      ? "text-[#17181c] dark:text-white"
+      : "text-zinc-500 hover:bg-black/[0.04] hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.06] dark:hover:text-white"
+  }`;
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className} title={label}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Link to={to} className={className} title={label}>
+      {content}
+    </Link>
+  );
+}
 
 export default function HeaderNav() {
-  const [user, setUser] = React.useState(null);
-  const [unreadNotifications, setUnreadNotifications] = React.useState(0);
-  const [unreadMessages, setUnreadMessages] = React.useState(0);
-  const [isPostModalOpen, setIsPostModalOpen] = React.useState(false);
+  const [user, setUser] = useState(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-const [searchResults, setSearchResults] = useState([]);
-const [loading, setLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const { pathname } = useLocation();
 
+  const refreshCounts = async () => {
+    try {
+      const [meRes, activityRes, conversationsRes] = await Promise.all([
+        api.get("/me"),
+        api.get("/notifications"),
+        api.get("/conversations"),
+      ]);
 
- 
-  React.useEffect(() => {
-    let isMounted = true;
+      setUser(meRes.data.user);
+      setUnreadNotifications(activityRes.data.unreadCount || 0);
+      setUnreadMessages(
+        conversationsRes.data.reduce(
+          (total, conversation) => total + (conversation.unreadCount || 0),
+          0
+        )
+      );
+      socket.emit("join", meRes.data.user.id);
+    } catch (err) {
+      console.error("Failed to load navigation state", err);
+    }
+  };
 
-    const fetchCounts = async () => {
-      try {
-        const res = await api.get("/me"); // This endpoint should include unreadNotifications and unreadMessages
-        if (isMounted) {
-          setUser(res.data.user);
-          setUnreadNotifications(res.data.unreadNotifications || 0);
-          socket.emit("join", res.data.user.id);
-        }
-      } catch (err) {
-        console.error("Failed to fetch counts", err);
-      }
+  useEffect(() => {
+    refreshCounts();
+    const interval = setInterval(refreshCounts, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const handleNotification = () => {
+      setUnreadNotifications((count) => count + 1);
+    };
+    const handleMessage = () => {
+      setUnreadMessages((count) => count + 1);
     };
 
-    fetchCounts(); // Fetch once on mount
-
-    const interval = setInterval(fetchCounts, 15000); // Poll every 15 seconds
-
+    socket.on("notification", handleNotification);
+    socket.on("receive-message", handleMessage);
     return () => {
-      isMounted = false;
-      clearInterval(interval); // Cleanup on unmount
+      socket.off("notification", handleNotification);
+      socket.off("receive-message", handleMessage);
     };
   }, []);
 
   useEffect(() => {
-    const fetchUnread = async () => {
-      try {
-        const res = await api.get("/conversations");
-        const totalUnread = res.data.reduce(
-          (sum, convo) => sum + (convo.unreadCount || 0),
-          0
-        );
-        console.log(totalUnread);
-        setUnreadMessages(totalUnread);
-      } catch (err) {
-        console.error("Failed to fetch unread messages:", err);
-      }
-    };
-
-    fetchUnread(); // Initial call
-
-    const intervalId = setInterval(fetchUnread, 10000); // Refresh every 10s
-
-    return () => clearInterval(intervalId); // Cleanup on unmount
-  }, []);
-
-  const location = useLocation();
-  const pathname = location.pathname;
-  const navItems = [
-    { to: "/dashboard", icon: <Home />, label: "Home", match: "/dashboard" },
-    { to: "/search", icon: <Search />, label: "Search" },
-    { to: "/new-post", icon: <PlusSquare />, label: "Post" },
-    { to: "/notifications", icon: <Bell />, label: "Notifications", badgeCount: unreadNotifications },
-    { to: "/profile", icon: <User />, label: "Profile" },
-  ];
-
-useEffect(() => {
-  const fetchRequests = async () => {
-    try {
-      const res = await api.get("/notifications");
-      setUnreadNotifications(res.data.unreadCount || 0);
-    } catch (err) {
-      console.error("Failed to fetch notifications", err);
-    }
-  };
-
-  fetchRequests(); // initial fetch
-  const interval = setInterval(fetchRequests, 10000); // fetch every 30 seconds
-
-  return () => clearInterval(interval); // cleanup on unmount
-}, []);
-
-useEffect(() => {
-  const handleNotification = () => {
-    setUnreadNotifications((count) => count + 1);
-  };
-
-  socket.on("notification", handleNotification);
-  return () => socket.off("notification", handleNotification);
-}, []);
-
-useEffect(() => {
-  const delayDebounce = setTimeout(() => {
-    const fetchUsers = async () => {
+    const timer = setTimeout(async () => {
       if (!searchQuery.trim()) {
         setSearchResults([]);
-        setLoading(false);
+        setSearching(false);
         return;
       }
 
-      setLoading(true); // start loading
-
+      setSearching(true);
       try {
-        const res = await api.get(`/search-users?query=${searchQuery}`);
-        setSearchResults(res.data.users);
+        const res = await api.get(
+          `/search-users?query=${encodeURIComponent(searchQuery.trim())}`
+        );
+        setSearchResults(res.data.users || []);
       } catch (err) {
         console.error("Search failed", err);
       } finally {
-        setLoading(false); // done loading
+        setSearching(false);
       }
-    };
+    }, 250);
 
-    fetchUsers();
-  }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-  return () => clearTimeout(delayDebounce);
-}, [searchQuery]);
+  const profilePath = user ? `/profile/${user.username}` : "/profile";
+  const desktopItems = [
+    { to: "/dashboard", label: "Home", icon: Home, active: pathname === "/dashboard" },
+    {
+      to: "/notifications",
+      label: "Activity",
+      icon: Bell,
+      active: pathname === "/notifications",
+      badgeCount: unreadNotifications,
+    },
+    {
+      to: "/messages",
+      label: "Messages",
+      icon: MessageCircle,
+      active: pathname === "/messages",
+      badgeCount: unreadMessages,
+    },
+  ];
 
-
+  const mobileItems = [
+    ...desktopItems.slice(0, 1),
+    { to: "/search", label: "Search", icon: Search, active: pathname === "/search" },
+    { label: "Create", icon: Plus, onClick: () => setIsPostModalOpen(true) },
+    ...desktopItems.slice(1),
+    {
+      to: profilePath,
+      label: "Profile",
+      icon: UserRound,
+      active: pathname.startsWith("/profile/"),
+    },
+  ];
 
   return (
     <>
-      {/* ===== Desktop Header ===== */}
-      <div className="sticky top-0 z-40 hidden md:flex justify-between items-center shadow-md px-4 py-2 bg-white dark:bg-black">
-        {/* Logo + Search */}
-        <div className="flex items-center gap-4 align-baseline">
-          <Link
-            to="/dashboard"
-            className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-purple-500 to-teal-400 font-[cursive]"
-          >
-            Gramify
-          </Link>
+      <header className="sticky top-0 z-40 border-b border-black/[0.08] bg-white/95 backdrop-blur dark:border-white/[0.09] dark:bg-[#111317]/95">
+        <div className="page-wrap flex h-16 items-center gap-5">
+          <Brand compact />
 
-          {/* Search Bar */}
-          <div className="relative hidden sm:block">
-            <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400 dark:text-gray-500">
-              <Search className="w-4 h-4" />
-            </span>
-<input
-  type="text"
-  placeholder="Search"
-  value={searchQuery}
-  onChange={(e) => setSearchQuery(e.target.value)}
-  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 dark:border-gray-700 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-black dark:text-white"
-/>
-{loading && (
-  <div className="absolute top-10 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 p-2 space-y-2 animate-pulse">
-    {Array(3).fill(0).map((_, i) => (
-      <div key={i} className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-700"></div>
-        <div className="flex-1 space-y-1">
-          <div className="h-3 w-1/2 bg-gray-300 dark:bg-gray-700 rounded"></div>
-          <div className="h-2 w-1/3 bg-gray-300 dark:bg-gray-700 rounded"></div>
-        </div>
-      </div>
-    ))}
-  </div>
-)}
-
-{searchResults.length > 0 && (
-  <div className="absolute top-10 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50">
-    {searchResults.map((user) => (
-      <Link
-        key={user._id}
-        to={`/profile/${user.username}`}
-        className="flex items-center gap-3 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-        onClick={() => {
-          setSearchQuery(""); // clear search on click
-          setSearchResults([]);
-        }}
-      >
-        <img
-          src={user.dp || "/default-avatar.png"}
-          alt={user.username}
-          className="w-8 h-8 rounded-full object-cover"
-        />
-        <div>
-          <div className="font-semibold text-sm text-gray-900 dark:text-white">{user.username}</div>
-          <div className="text-xs text-gray-600 dark:text-gray-400">{user.name}</div>
-        </div>
-      </Link>
-    ))}
-  </div>
-)}
-
-          </div>
-        </div>
-
-        {/* Center Icons */}
-        <div className="flex items-center gap-6 md:gap-10 lg:gap-14 xl:gap-20 text-gray-700 dark:text-gray-300">
-          {[
-            { name: "Home", icon: <Home />, color: "from-pink-500 via-purple-500 to-teal-400", badgeCount: 0, to: "/dashboard" },
-            { name: "Post", icon: <PlusSquare />, color: "from-pink-500 via-purple-500 to-teal-400", badgeCount: 0 },
-            { name: "Notifications", icon: <Bell />, color: "from-pink-500 via-purple-500 to-teal-400", badgeCount: unreadNotifications, to: "/notifications" },
-            { name: "Messages", icon: <MessageSquare />, color: "from-pink-500 via-purple-500 to-teal-400", badgeCount: unreadMessages, to: "/messages" },
-          ].map(({ name, icon, color, badgeCount = 0, to }) => {
-            const isActive =
-              (name === "Home" && pathname === "/dashboard") ||
-              (name === "Notifications" && pathname === "/notifications") ||
-              (name === "Messages" && pathname === "/messages");
-
-            const styledIcon = cloneElement(icon, {
-              className: `w-6 h-6 transition-colors ${
-                isActive ? "text-black dark:text-white" : "text-gray-500 dark:text-gray-400"
-              }`,
-              strokeWidth: isActive ? 2.4 : 1.8,
-            });
-
-            const iconContent = (
-              <div className="relative p-1 rounded-md transition-all">
-                {styledIcon}
-                {badgeCount > 0 && (
-                  <span className="absolute -top-1 -right-1 text-xs bg-red-500 text-white rounded-full px-1.5">
-                    {badgeCount}
-                  </span>
+          <div className="relative hidden w-full max-w-xs md:block">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+            <input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              className="field h-10 min-h-10 bg-[#f4f5f7] pl-9 dark:bg-[#1b1e23]"
+              placeholder="Search people"
+              aria-label="Search people"
+            />
+            {(searching || searchResults.length > 0) && (
+              <div className="surface absolute left-0 right-0 top-12 overflow-hidden p-1 shadow-xl">
+                {searching ? (
+                  <div className="space-y-1 p-2">
+                    {[0, 1, 2].map((item) => (
+                      <div key={item} className="flex items-center gap-3 p-2">
+                        <div className="skeleton h-9 w-9 rounded-full" />
+                        <div className="flex-1 space-y-2">
+                          <div className="skeleton h-3 w-24" />
+                          <div className="skeleton h-2.5 w-16" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  searchResults.map((result) => (
+                    <Link
+                      key={result._id}
+                      to={`/profile/${result.username}`}
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSearchResults([]);
+                      }}
+                      className="flex items-center gap-3 rounded-md p-2.5 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                    >
+                      <img
+                        src={result.dp || "/default-avatar.png"}
+                        alt=""
+                        className="avatar h-9 w-9"
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold">
+                          {result.username}
+                        </span>
+                        <span className="block truncate text-xs text-zinc-500">
+                          {result.name}
+                        </span>
+                      </span>
+                    </Link>
+                  ))
                 )}
               </div>
-            );
+            )}
+          </div>
 
-            // "Post" opens modal, others navigate
-            if (name === "Post") {
-              return (
-                <div
-                  key={name}
-                  className="flex flex-col items-center space-y-1 cursor-pointer"
-                  onClick={() => setIsPostModalOpen(true)}
-                >
-                  {iconContent}
-                  {isActive && (
-                    <>
-                      <div className="w-6 h-1 rounded-full overflow-hidden dark:hidden">
-                        <div className={`h-full bg-gradient-to-r ${color}`} />
-                      </div>
-                      <div className="w-6 h-1 rounded-full hidden dark:block">
-                        <div className="h-full bg-white" />
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
-            }
-
-            // For Home, Notifications, Messages: wrap in Link
-            return (
-              <Link
-                key={name}
-                to={to}
-                className="flex flex-col items-center space-y-1 cursor-pointer"
-              >
-                {iconContent}
-                {isActive && (
-                  <>
-                    <div className="w-6 h-1 rounded-full overflow-hidden dark:hidden">
-                      <div className={`h-full bg-gradient-to-r ${color}`} />
-                    </div>
-                    <div className="w-6 h-1 rounded-full hidden dark:block">
-                      <div className="h-full bg-white" />
-                    </div>
-                  </>
-                )}
-              </Link>
-            );
-          })}
-        </div>
-        {/* Profile Section */}
-        {user && (
-          <Link
-            to={`/profile/${user.username}`}
-            className="flex items-center gap-4 p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition duration-150"
-          >
-            <img
-              src={user.dp || "/default-avatar.png"} // fallback if no dp
-              alt="Profile"
-              className="h-10 w-10 rounded-full object-cover"
+          <nav className="ml-auto hidden h-full items-center gap-1 md:flex">
+            {desktopItems.map((item) => (
+              <NavItem key={item.label} {...item} />
+            ))}
+            <NavItem
+              label="Create"
+              icon={Plus}
+              onClick={() => setIsPostModalOpen(true)}
             />
-            <div className="hidden sm:flex flex-col">
-              <span className="font-semibold text-sm text-gray-800 dark:text-white">
+          </nav>
+
+          {user && (
+            <Link
+              to={profilePath}
+              className={`hidden h-10 items-center gap-2 rounded-md p-1.5 pr-3 transition md:flex ${
+                pathname.startsWith("/profile/")
+                  ? "bg-[#e23d58]/10"
+                  : "hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+              }`}
+            >
+              <img
+                src={user.dp || "/default-avatar.png"}
+                alt=""
+                className="avatar h-7 w-7"
+              />
+              <span className="hidden max-w-24 truncate text-sm font-semibold xl:block">
                 {user.username}
               </span>
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                {user.name}
-              </span>
-            </div>
-          </Link>
-        )}
-      </div>
+            </Link>
+          )}
 
-      {/* ===== Mobile Header ===== */}
-      <div className="md:hidden sticky top-0 z-40 bg-white dark:bg-black border-b shadow-sm">
-        {/* Top Bar */}
-        <div className="flex justify-between items-center px-4 py-2 border-b shadow-sm bg-white dark:bg-black dark:border-gray-700">
           <Link
-            to="/dashboard"
-            className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-purple-500 to-teal-400 font-[cursive]"
+            to="/messages"
+            className="relative ml-auto md:hidden"
+            aria-label="Messages"
           >
-            Gramify
-          </Link>
-          <Link to="/messages">
-            <NavIcon icon={<MessageSquare />} badgeCount={unreadMessages} />
+            <MessageCircle className="h-6 w-6" />
+            <Badge count={unreadMessages} />
           </Link>
         </div>
+      </header>
 
-        {/* Bottom Nav */}
-        <div className="fixed bottom-0 left-0 right-0 mb-0 flex justify-around items-center bg-white dark:bg-black shadow-md border-t dark:border-gray-700 py-2 z-50">
-          {navItems.map(({ to, icon, badgeCount }) => {
-            const isActive = pathname === to;
-            const isProfileTab = to.startsWith("/profile");
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-6 border-t border-black/[0.08] bg-white px-1 pb-[env(safe-area-inset-bottom)] dark:border-white/[0.09] dark:bg-[#111317] md:hidden">
+        {mobileItems.map((item) => {
+          const Icon = item.icon;
+          const className = `relative flex min-w-0 flex-col items-center justify-center gap-1 text-[10px] font-semibold ${
+            item.active ? "text-[#e23d58]" : "text-zinc-500 dark:text-zinc-400"
+          }`;
+          const content = (
+            <>
+              <span className="relative">
+                <Icon className="h-5 w-5" strokeWidth={item.active ? 2.6 : 2} />
+                <Badge count={item.badgeCount} />
+              </span>
+              <span className="truncate">{item.label}</span>
+            </>
+          );
 
-            const isPostTab = to === "/new-post";
+          return item.onClick ? (
+            <button key={item.label} onClick={item.onClick} className={className}>
+              {content}
+            </button>
+          ) : (
+            <Link key={item.label} to={item.to} className={className}>
+              {content}
+            </Link>
+          );
+        })}
+      </nav>
 
-            const iconToRender =
-              isProfileTab && user ? (
-                <img
-                  src={user.dp || "/default-avatar.png"}
-                  alt="Profile"
-                  className={`w-7 h-7 rounded-full object-cover border-2 ${
-                    isActive
-                      ? "border-black dark:border-white"
-                      : "border-gray-400 dark:border-gray-600"
-                  }`}
-                />
-              ) : (
-                cloneElement(icon, {
-                  className: `w-6 h-6 transition-colors duration-150 ease-in-out ${
-                    isActive ? "text-black dark:text-white" : "text-gray-500 dark:text-gray-400"
-                  }`,
-                  strokeWidth: isActive ? 2.5 : 1.8,
-                })
-              );
-
-            // === Handle POST separately ===
-            if (isPostTab) {
-              return (
-                <button
-                  key={to}
-                  onClick={() => setIsPostModalOpen(true)}
-                  className="relative flex flex-col items-center justify-center p-2"
-                >
-                  {badgeCount > 0 && (
-                    <span className="absolute top-1 right-1 text-xs bg-red-500 text-white rounded-full px-1.5">
-                      {badgeCount}
-                    </span>
-                  )}
-                  {iconToRender}
-                </button>
-              );
-            }
-
-            // === Default Link for other tabs ===
-return (
-  <Link
-    key={to}
-    to={isProfileTab && user ? `/profile/${user.username}` : to}
-    className="relative flex flex-col items-center justify-center p-2"
-  >
-    {badgeCount > 0 && (
-      <span className="absolute top-1 right-1 text-xs bg-red-500 text-white rounded-full px-1.5">
-        {badgeCount}
-      </span>
-    )}
-    {iconToRender}
-  </Link>
-);
-
-          })}
-        </div>
-      </div>
-      <PostFormModal isOpen={isPostModalOpen} onClose={() => setIsPostModalOpen(false)} />
+      <PostFormModal
+        isOpen={isPostModalOpen}
+        onClose={() => setIsPostModalOpen(false)}
+      />
     </>
   );
 }

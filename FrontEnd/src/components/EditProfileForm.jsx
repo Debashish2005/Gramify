@@ -1,159 +1,119 @@
-import { useState, useEffect } from "react";
-import axios from "../api/axios";
-import { toast } from "react-hot-toast";
-import EmojiPicker from "emoji-picker-react"; // ✅ use this
+import { useEffect, useState } from "react";
+import { Camera, Smile } from "lucide-react";
+import EmojiPicker from "emoji-picker-react";
+import toast from "react-hot-toast";
+import api from "../api/axios";
 
-
-const EditProfileForm = ({ userData, onUpdate }) => {
+export default function EditProfileForm({ userData, onUpdate }) {
   const [username, setUsername] = useState(userData?.username || "");
   const [bio, setBio] = useState(userData?.bio || "");
-  const [dp, setDp] = useState(null);
-  const [dpPreview, setDpPreview] = useState(userData?.dp || "");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [photo, setPhoto] = useState(null);
+  const [preview, setPreview] = useState(userData?.dp || "");
   const [usernameError, setUsernameError] = useState("");
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false); // ✅
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (dp) {
-      const url = URL.createObjectURL(dp);
-      setDpPreview(url);
-      return () => URL.revokeObjectURL(url);
-    }
-  }, [dp]);
+    if (!photo) return;
+    const url = URL.createObjectURL(photo);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photo]);
 
-  const validateUsername = async () => {
-    if (username === userData.username) return true;
-
-    try {
-      const res = await axios.get(`/check-username?username=${username}`);
-      return res.data.available;
-    } catch (err) {
-      console.error("Username validation failed:", err);
-      return false;
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setSubmitting(true);
     setUsernameError("");
 
-    if (bio.length > 150) {
-      toast.error("Bio can't exceed 150 characters");
-      setIsSubmitting(false);
-      return;
-    }
-
-    const isUnique = await validateUsername();
-    if (!isUnique && username !== userData.username) {
-      setUsernameError("Username is already taken");
-      setIsSubmitting(false);
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("username", username);
-    formData.append("bio", bio);
-    if (dp) formData.append("dp", dp);
-
     try {
-      const res = await axios.put("/update-profile", formData);
-      toast.success("Profile updated");
-      onUpdate(res.data);
-    } catch (err) {
-      toast.error("Failed to update profile");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+      if (username !== userData.username) {
+        const availability = await api.get(
+          `/check-username?username=${encodeURIComponent(username)}`
+        );
+        if (!availability.data.available) {
+          setUsernameError("That username is already taken.");
+          return;
+        }
+      }
 
-  const onEmojiClick = (emojiData) => {
-    setBio((prev) => (prev + emojiData.emoji).slice(0, 150));
+      const formData = new FormData();
+      formData.append("username", username);
+      formData.append("bio", bio);
+      if (photo) formData.append("dp", photo);
+
+      const response = await api.put("/update-profile", formData);
+      toast.success("Profile updated");
+      onUpdate(response.data);
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Could not update your profile");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="space-y-6 p-6 w-full max-w-md mx-auto bg-white dark:bg-gray-900 shadow-lg rounded-lg"
-    >
-      {/* Profile Picture Upload */}
-      <div>
-        <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-200">
-          Profile Picture
-        </label>
-        {dpPreview && (
-          <img
-            src={dpPreview}
-            alt="Preview"
-            className="w-24 h-24 object-cover rounded-full mb-2 border border-gray-300 dark:border-gray-600"
-          />
-        )}
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => setDp(e.target.files[0])}
-          className="text-sm text-gray-700 dark:text-gray-300"
+    <form onSubmit={handleSubmit} className="space-y-5 p-5">
+      <div className="flex items-center gap-4">
+        <img
+          src={preview || "/default-avatar.png"}
+          alt=""
+          className="avatar h-20 w-20"
         />
+        <label className="btn-secondary cursor-pointer">
+          <Camera className="h-4 w-4" />
+          Change photo
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(event) => setPhoto(event.target.files?.[0] || null)}
+            className="sr-only"
+          />
+        </label>
       </div>
 
-      {/* Username */}
-      <div>
-        <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-200">
-          Username
-        </label>
+      <label className="block">
+        <span className="mb-1.5 block text-sm font-bold">Username</span>
         <input
-          type="text"
           value={username}
-          onChange={(e) => setUsername(e.target.value.trim())}
-          className="w-full border dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded px-3 py-2 text-sm focus:outline-none focus:ring"
+          onChange={(event) => setUsername(event.target.value.trim())}
+          className="field"
           required
         />
-        {usernameError && (
-          <p className="text-sm text-red-500 mt-1">{usernameError}</p>
-        )}
-      </div>
+        {usernameError && <span className="mt-1.5 block text-xs text-red-600">{usernameError}</span>}
+      </label>
 
-      {/* Bio with Emoji Picker */}
-      <div>
-        <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-200">
-          Bio
-        </label>
-        <textarea
-          value={bio}
-          onChange={(e) => setBio(e.target.value)}
-          maxLength={150}
-          rows={3}
-          className="w-full border dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded px-3 py-2 text-sm focus:outline-none focus:ring resize-none"
-        />
-        <div className="flex items-center justify-between mt-2">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {bio.length}/150 characters
-          </p>
+      <label className="block">
+        <span className="mb-1.5 block text-sm font-bold">Bio</span>
+        <div className="relative">
+          <textarea
+            value={bio}
+            onChange={(event) => setBio(event.target.value.slice(0, 150))}
+            className="field min-h-28 resize-none pr-11"
+            rows={4}
+          />
           <button
             type="button"
-            onClick={() => setShowEmojiPicker((prev) => !prev)}
-            className="text-sm text-blue-500 "
+            onClick={() => setShowEmojiPicker((open) => !open)}
+            className="icon-button absolute bottom-2 right-2 h-8 w-8"
+            title="Add emoji"
           >
-            {showEmojiPicker ? "Close Emoji" : "Add Emoji 😊"}
+            <Smile className="h-4 w-4" />
           </button>
         </div>
+        <div className="mt-1.5 flex justify-end text-xs text-zinc-500">{bio.length}/150</div>
         {showEmojiPicker && (
-          <div className="mt-2">
-            <EmojiPicker onEmojiClick={onEmojiClick} />
+          <div className="mt-2 overflow-hidden">
+            <EmojiPicker
+              onEmojiClick={(emoji) => setBio((current) => (current + emoji.emoji).slice(0, 150))}
+              theme={document.documentElement.classList.contains("dark") ? "dark" : "light"}
+            />
           </div>
         )}
-      </div>
+      </label>
 
-      {/* Submit */}
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="w-full px-4 py-2 bg-black text-white rounded hover:opacity-90 disabled:opacity-60"
-      >
-        {isSubmitting ? "Saving..." : "Save Changes"}
+      <button type="submit" disabled={submitting} className="btn-primary w-full">
+        {submitting ? "Saving..." : "Save profile"}
       </button>
     </form>
   );
-};
-
-export default EditProfileForm;
+}

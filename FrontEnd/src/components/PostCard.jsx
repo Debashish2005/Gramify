@@ -1,678 +1,478 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  ThumbsUp,
-  MessageCircle,
-  Share2,
-  MoreHorizontal,
+  Angry,
+  Frown,
   Heart,
   Laugh,
-  Frown,
-  Angry,
+  MessageCircle,
+  MoreHorizontal,
+  PencilLine,
+  Share2,
+  ThumbsUp,
+  Trash2,
+  X,
 } from "lucide-react";
+import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
 import api from "../api/axios";
-import { PencilLine } from "lucide-react";
-import { Trash2 } from "lucide-react";
-import { X } from "lucide-react";
-import EmojiTextArea from "./EmojiTextArea";
 import ConfirmModal from "./ConfirmModal";
+import PostFormModal from "./PostFormModal";
 
-
-const ReactionIcons = [
-  { icon: <ThumbsUp className="text-blue-500" />, label: "like" },
-  { icon: <Heart className="text-red-500" />, label: "love" },
-  { icon: <Laugh className="text-yellow-400" />, label: "smile" },
-  { icon: <Frown className="text-blue-400" />, label: "sad" },
-  { icon: <Angry className="text-red-700" />, label: "angry" },
+const reactionOptions = [
+  { type: "like", label: "Like", Icon: ThumbsUp, color: "text-blue-600" },
+  { type: "love", label: "Love", Icon: Heart, color: "text-rose-600" },
+  { type: "smile", label: "Smile", Icon: Laugh, color: "text-amber-500" },
+  { type: "sad", label: "Sad", Icon: Frown, color: "text-sky-500" },
+  { type: "angry", label: "Angry", Icon: Angry, color: "text-red-700" },
 ];
 
-const PostMedia = ({ media }) => {
-  if (!media || media.length === 0) return null;
+function relativeTime(value) {
+  const seconds = Math.max(1, Math.floor((Date.now() - new Date(value)) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+function PostMedia({ media = [] }) {
+  if (!media.length) return null;
+
   if (media.length === 1) {
     const item = media[0];
     return (
-      <div className="mt-4">
-        {item.type === "image" ? (
-          <img src={item.url} alt="post" className="w-full rounded-lg object-cover max-h-[600px] mx-auto" />
+      <div className="border-y border-black/[0.06] bg-black/[0.02] dark:border-white/[0.08] dark:bg-black/20">
+        {item.type === "video" ? (
+          <video controls src={item.url} className="max-h-[680px] w-full object-contain" />
         ) : (
-          <video controls src={item.url} className="w-full rounded-lg max-h-[600px] mx-auto" />
+          <img src={item.url} alt="Post media" className="max-h-[680px] w-full object-contain" />
         )}
       </div>
     );
   }
+
   return (
-    <div className="grid gap-2 mt-4 grid-cols-2 sm:grid-cols-3">
-      {media.map((item, index) => (
-        <div key={index} className="relative w-full">
-          {item.type === "image" ? (
-            <img src={item.url} alt={`media-${index}`} className="w-full h-48 sm:h-56 object-cover rounded-md" />
+    <div className="grid grid-cols-2 gap-0.5 overflow-hidden border-y border-black/[0.06] dark:border-white/[0.08]">
+      {media.slice(0, 6).map((item, index) => (
+        <div key={`${item.url}-${index}`} className="relative aspect-square bg-black/[0.03]">
+          {item.type === "video" ? (
+            <video src={item.url} controls className="h-full w-full object-cover" />
           ) : (
-            <video controls src={item.url} className="w-full h-48 sm:h-56 object-cover rounded-md" />
+            <img src={item.url} alt="" className="h-full w-full object-cover" />
+          )}
+          {index === 5 && media.length > 6 && (
+            <span className="absolute inset-0 grid place-items-center bg-black/55 text-2xl font-bold text-white">
+              +{media.length - 6}
+            </span>
           )}
         </div>
       ))}
     </div>
   );
-};
+}
 
-const getTopReaction = (reactions) => {
-  if (!reactions) return null;
-  const sorted = Object.entries(reactions).filter(([, count]) => count > 0).sort((a, b) => b[1] - a[1]);
-  if (sorted.length === 0) return null;
-  return { type: sorted[0][0], count: sorted[0][1] };
-};
-
-export default function PostCard({ post }) {
-  const [showReactions, setShowReactions] = useState(false);
+export default function PostCard({ post, onDeleted }) {
   const [postData, setPostData] = useState(post);
-  const [newComment, setNewComment] = useState("");
-  const [showComments, setShowComments] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
-  const [selectedReaction, setSelectedReaction] = useState(() =>
-    ReactionIcons.find((r) => r.label === post.userReaction) || null
-  );
-
-  const hoverTimeout = useRef(null);
-  const menuRef = useRef();
-  const topReaction = getTopReaction(postData.reactions || {});
   const [currentUser, setCurrentUser] = useState(null);
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [showReactionList, setShowReactionList] = useState(false);
   const [reactionUsers, setReactionUsers] = useState({});
   const [loadingReactions, setLoadingReactions] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [commenting, setCommenting] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const menuRef = useRef(null);
 
-  const iconMap = {
-    like: <ThumbsUp className="text-blue-500 w-4 h-4" />,
-    love: <Heart className="text-red-500 w-4 h-4" />,
-    smile: <Laugh className="text-yellow-400 w-4 h-4" />,
-    sad: <Frown className="text-blue-400 w-4 h-4" />,
-    angry: <Angry className="text-red-700 w-4 h-4" />,
-  };
+  useEffect(() => setPostData(post), [post]);
 
-  const media = postData.media || [];
+  useEffect(() => {
+    api
+      .get("/me")
+      .then((res) => setCurrentUser(res.data.user))
+      .catch((err) => console.error("Failed to load current user", err));
+  }, []);
+
+  useEffect(() => {
+    const closeMenu = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) setShowMenu(false);
+    };
+    document.addEventListener("mousedown", closeMenu);
+    return () => document.removeEventListener("mousedown", closeMenu);
+  }, []);
+
   const totalReactions = Object.values(postData.reactions || {}).reduce(
     (total, count) => total + Number(count || 0),
     0
   );
+  const selectedReaction = reactionOptions.find(
+    (reaction) => reaction.type === postData.userReaction
+  );
+  const SelectedReactionIcon = selectedReaction?.Icon;
+  const activeReactionTypes = reactionOptions.filter(
+    (reaction) => (postData.reactions?.[reaction.type] || 0) > 0
+  );
+  const isOwner = currentUser?.id === postData.user?._id;
+
+  const react = async (type) => {
+    setShowReactionPicker(false);
+    try {
+      const res = await api.post(`/feed/${postData._id}/react`, { type });
+      setPostData((current) => ({
+        ...current,
+        reactions: Object.fromEntries(
+          Object.entries(res.data.reactions).map(([key, users]) => [key, users.length])
+        ),
+        userReaction: res.data.userReaction,
+      }));
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Could not update your reaction");
+    }
+  };
 
   const openReactionList = async () => {
-    if (totalReactions === 0) return;
+    if (!totalReactions) return;
     setShowReactionList(true);
     setLoadingReactions(true);
     try {
       const res = await api.get(`/feed/${postData._id}/reactions`);
       setReactionUsers(res.data.reactions || {});
-    } catch (err) {
-      console.error("Failed to load reactions:", err);
+    } catch {
+      toast.error("Could not load reactions");
     } finally {
       setLoadingReactions(false);
     }
   };
 
-  useEffect(() => {
-    setPostData(post);
-    setSelectedReaction(() =>
-      ReactionIcons.find((r) => r.label === post.userReaction) || null
-    );
-    setShowComments(false);
-  }, [post]);
-
-  useEffect(() => {
-    if (postData.userReaction) {
-      const found = ReactionIcons.find((r) => r.label === postData.userReaction);
-      if (found) setSelectedReaction(found);
+  const submitComment = async (event) => {
+    event.preventDefault();
+    if (!newComment.trim()) return;
+    setCommenting(true);
+    try {
+      const res = await api.post(`/feed/${postData._id}/comment`, {
+        text: newComment.trim(),
+      });
+      setPostData((current) => ({
+        ...current,
+        comments: [...(current.comments || []), res.data.comment],
+      }));
+      setNewComment("");
+      setShowComments(true);
+    } catch {
+      toast.error("Could not add your comment");
+    } finally {
+      setCommenting(false);
     }
-  }, [postData]);
-
-  useEffect(() => {
-    const fetchCurrentUser = async () => {
-      try {
-        const res = await api.get("/me");
-        setCurrentUser(res.data.user);
-      } catch (err) {
-        console.error("Failed to fetch current user:", err.message);
-      }
-    };
-    fetchCurrentUser();
-  }, []);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setShowMenu(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const handleMouseEnter = () => {
-    if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
-    setShowReactions(true);
-  };
-  const handleMouseLeave = () => {
-    hoverTimeout.current = setTimeout(() => setShowReactions(false), 800);
   };
 
-  const displayLabel = (label) =>
-    label.charAt(0).toUpperCase() + label.slice(1);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const sharePost = async () => {
+    const shareData = {
+      title: `Post by ${postData.user?.username || "a Gramify user"}`,
+      text: postData.caption || "See this post on Gramify",
+      url: window.location.href,
+    };
+    try {
+      if (navigator.share) await navigator.share(shareData);
+      else {
+        await navigator.clipboard.writeText(window.location.href);
+        toast.success("Link copied");
+      }
+    } catch {
+      // Closing the native share sheet is not an error worth surfacing.
+    }
+  };
 
-  const handleDelete = async () => {
+  const deletePost = async () => {
     try {
       await api.delete(`/post/${postData._id}`);
-      console.log("Post deleted");
-
       setShowDeleteModal(false);
-      window.location.reload();
-
-      // You can also trigger a parent refresh or state update here
-    } catch (err) {
-      console.error("Delete failed:", err.response?.data || err.message);
+      onDeleted?.(postData._id);
+      toast.success("Post deleted");
+    } catch {
+      toast.error("Could not delete the post");
     }
   };
 
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-8">
-      <div className="w-full max-w-xl mx-auto bg-white dark:bg-[#1e1e1e] rounded-lg shadow border border-transparent dark:border-gray-700 my-4 overflow-hidden">
-        {/* Header */}
-        <div className="relative flex items-center justify-between px-4 py-3">
-          <div className="flex items-center space-x-3">
-            <Link to={`/profile/${postData.user?.username}`}>
-              <img
-                src={postData.user?.dp || "/default.jpg"}
-                alt="Profile"
-                className="w-10 h-10 rounded-full object-cover"
-              />
-            </Link>
-            <div>
-              <Link
-                to={`/profile/${postData.user?.username}`}
-                className="font-semibold text-sm hover:underline text-gray-800 dark:text-gray-200 pr-4"
-              >
-                {postData.user?.username || "Unknown"}{" "}
-              </Link>
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                {new Date(postData.createdAt).toLocaleString()} · 🌐
-              </div>
-            </div>
-          </div>
-          <div ref={menuRef}>
- <div ref={menuRef} className="relative">
-  <MoreHorizontal
-    className="w-5 h-5 cursor-pointer text-gray-600 dark:text-gray-300"
-    onClick={() => setShowMenu((prev) => !prev)}
-  />
-
-  {showMenu && currentUser?.id === postData.user?._id && (
-    <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-[#2c2c2c] border dark:border-gray-600 rounded-md shadow-lg z-20">
-<ul className="py-1 text-sm text-gray-800 dark:text-gray-100">
-<li
-  className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer flex items-center gap-2"
-  onClick={() => {
-    setShowMenu(false);
-    setShowEditModal(true);
-  }}
->
-  <PencilLine className="w-4 h-4" />
-  Edit Post
-</li>
-
-
- <li
-        className="px-4 py-2 hover:bg-red-100 dark:hover:bg-red-900 text-red-600 dark:text-red-400 cursor-pointer flex items-center gap-2"
-        onClick={() => {
-          setShowMenu(false);
-          setShowDeleteModal(true);
-        }}
-      >
-        <Trash2 className="w-4 h-4" />
-        Delete Post
-      </li>
-</ul>
-
-    </div>
-  )}
-</div>
-
+    <article className="surface overflow-visible">
+      <header className="flex items-center gap-3 p-4">
+        <Link to={`/profile/${postData.user?.username}`}>
+          <img
+            src={postData.user?.dp || "/default.jpg"}
+            alt=""
+            className="avatar h-11 w-11"
+          />
+        </Link>
+        <div className="min-w-0 flex-1">
+          <Link
+            to={`/profile/${postData.user?.username}`}
+            className="block truncate text-sm font-bold hover:underline"
+          >
+            {postData.user?.username || "Unknown user"}
+          </Link>
+          <div className="mt-0.5 flex items-center gap-2 text-xs text-zinc-500">
+            <span>{relativeTime(postData.createdAt)}</span>
+            <span aria-hidden="true">·</span>
+            <span className="capitalize">{postData.visibility || "public"}</span>
           </div>
         </div>
 
-        {postData.caption && (
-          <div className="px-4 py-2 text-gray-800 dark:text-gray-200 text-sm">
-            {postData.caption}
-          </div>
-        )}
-
-        <PostMedia media={media} />
-
-        {/* Reaction summary */}
-        <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400 px-4 py-2">
-          <button
-            type="button"
-            onClick={openReactionList}
-            className="flex items-center space-x-1 hover:underline disabled:no-underline"
-            disabled={totalReactions === 0}
-          >
-            {topReaction && (
-              <span className="flex items-center">
-                {iconMap[topReaction.type]}
-                <span className="ml-1">{totalReactions}</span>
-              </span>
-            )}
-          </button>
-          <div className="flex space-x-2">
-            <span>{postData.comments?.length || 0} comments</span>
-            <span>{postData.shares || 0} shares</span>
-          </div>
-        </div>
-
-        <hr className="border-gray-200 dark:border-gray-700" />
-
-        {/* Comments Section */}
-        {showComments && (
-          <div className="px-4 pb-4">
-            <div className="space-y-2">
-              {postData.comments?.map((comment, index) => (
-                <div key={comment._id || index} className="flex gap-2 items-start">
-                  <img
-                    src={comment.user?.dp || "/default.jpg"}
-                    alt="dp"
-                    className="w-8 h-8 rounded-full object-cover"
-                  />
-                  <div className="bg-gray-100 mt-2 dark:bg-[#2c2c2c] px-3 py-2 rounded-2xl max-w-[85%]">
-                    <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                      {comment.user?.username || "Unknown"}
-                    </div>
-                    <div className="text-sm text-gray-800 dark:text-gray-200">
-                      {comment.text}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Comment Input */}
-            {currentUser && (
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (!newComment.trim()) return;
-                  try {
-                    const res = await api.post(`/feed/${postData._id}/comment`, {
-                      text: newComment,
-                    });
-                    setPostData((prev) => ({
-                      ...prev,
-                      comments: [...(prev.comments || []), res.data.comment],
-                    }));
-                    setNewComment("");
-                  } catch (err) {
-                    console.error("Failed to post comment:", err.response?.data || err.message);
-                  }
-                }}
-                className="flex items-center gap-2 mt-4"
-              >
-                <img
-                  src={currentUser.dp || "/default.jpg"}
-                  alt="dp"
-                  className="w-8 h-8 rounded-full object-cover"
-                />
-                <input
-                  type="text"
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder={`Comment as ${currentUser.username}`}
-                  className="flex-1 bg-gray-100 dark:bg-[#2c2c2c] rounded-full px-4 py-2 text-sm outline-none text-gray-800 dark:text-white"
-                />
-              </form>
-            )}
-          </div>
-        )}
-
-        {/* Buttons */}
-        <div className="flex justify-around text-gray-700 dark:text-gray-300 text-sm font-medium py-2">
-          <div
-            className="relative flex items-center space-x-2 hover:bg-gray-100 dark:hover:bg-gray-800 px-4 py-1 rounded cursor-pointer"
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-          >
-            {selectedReaction ? (
-              <span className="w-5 h-5">{selectedReaction.icon}</span>
-            ) : (
-              <ThumbsUp className="w-5 h-5" />
-            )}
-            <span>
-              {selectedReaction ? displayLabel(selectedReaction.label) : "Like"}
-            </span>
-
-            {showReactions && (
-              <div
-                className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white dark:bg-[#2c2c2c] rounded-full shadow px-2 py-1 flex space-x-2 z-10 border dark:border-gray-600"
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
-              >
-                {ReactionIcons.map((reaction, i) => (
-                  <div
-                    key={i}
-                    className="hover:scale-110 transition-transform duration-150 cursor-pointer"
-                    title={displayLabel(reaction.label)}
-                    onClick={async () => {
-                      setSelectedReaction(reaction);
-                      setShowReactions(false);
-                      try {
-                        const res = await api.post(`/feed/${postData._id}/react`, {
-                          type: reaction.label,
-                        });
-                        if (res.data && res.data.reactions) {
-                          setPostData((prev) => ({
-                            ...prev,
-                            reactions: Object.fromEntries(
-                              Object.entries(res.data.reactions).map(([k, v]) => [k, v.length])
-                            ),
-                            userReaction: reaction.label,
-                          }));
-                        }
-                      } catch (err) {
-                        console.error("Failed to react:", err.response?.data || err.message);
-                      }
-                    }}
-                  >
-                    {reaction.icon}
-                  </div>
-                ))}
+        {isOwner && (
+          <div ref={menuRef} className="relative">
+            <button
+              onClick={() => setShowMenu((open) => !open)}
+              className="icon-button"
+              title="Post options"
+            >
+              <MoreHorizontal className="h-5 w-5" />
+            </button>
+            {showMenu && (
+              <div className="surface absolute right-0 top-11 z-20 w-44 p-1 shadow-xl">
+                <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    setShowEditModal(true);
+                  }}
+                  className="btn-ghost w-full justify-start"
+                >
+                  <PencilLine className="h-4 w-4" />
+                  Edit post
+                </button>
+                <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    setShowDeleteModal(true);
+                  }}
+                  className="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete post
+                </button>
               </div>
             )}
           </div>
+        )}
+      </header>
 
-          <div
-            className="flex items-center space-x-2 hover:bg-gray-100 dark:hover:bg-gray-800 px-4 py-1 rounded cursor-pointer"
-            onClick={() => setShowComments((prev) => !prev)}
-          >
-            <MessageCircle className="w-5 h-5" />
-            <span>Comment</span>
-          </div>
+      {postData.caption && (
+        <p className="whitespace-pre-wrap px-4 pb-4 text-sm leading-6 text-zinc-700 dark:text-zinc-200">
+          {postData.caption}
+        </p>
+      )}
 
-          <div className="flex items-center space-x-2 hover:bg-gray-100 dark:hover:bg-gray-800 px-4 py-1 rounded cursor-pointer">
-            <Share2 className="w-5 h-5" />
-            <span>Share</span>
-          </div>
-        </div>
+      <PostMedia media={postData.media} />
+
+      <div className="flex min-h-11 items-center justify-between gap-4 px-4 py-2 text-xs text-zinc-500">
+        <button
+          onClick={openReactionList}
+          disabled={!totalReactions}
+          className="flex min-w-0 items-center gap-1.5 hover:text-zinc-900 disabled:cursor-default dark:hover:text-white"
+        >
+          <span className="flex -space-x-1">
+            {activeReactionTypes.slice(0, 3).map((reaction) => {
+              const ReactionIcon = reaction.Icon;
+              return (
+                <span
+                  key={reaction.type}
+                  className="grid h-5 w-5 place-items-center rounded-full border border-white bg-white dark:border-[#15171b] dark:bg-[#15171b]"
+                >
+                  <ReactionIcon className={`h-3.5 w-3.5 ${reaction.color}`} />
+                </span>
+              );
+            })}
+          </span>
+          {totalReactions > 0 && <span>{totalReactions}</span>}
+        </button>
+        <button onClick={() => setShowComments((open) => !open)} className="hover:text-zinc-900 dark:hover:text-white">
+          {postData.comments?.length || 0} comments
+        </button>
       </div>
-      <EditPostModal
-  isOpen={showEditModal}
-  onClose={() => setShowEditModal(false)}
-  post={postData}
-  onSave={async (newCaption) => {
-    try {
-      const res = await api.put(`/feed/${postData._id}`, { caption: newCaption });
-      setPostData((prev) => ({ ...prev, caption: res.data.caption }));
-      setShowEditModal(false);
-    } catch (err) {
-      console.error("Edit failed:", err.response?.data || err.message);
-    }
-  }}
-/>
 
-  <ConfirmModal
+      <div className="grid grid-cols-3 border-t border-black/[0.07] px-2 py-1.5 dark:border-white/[0.08]">
+        <div className="relative">
+          <button
+            onClick={() => {
+              if (selectedReaction) react(selectedReaction.type);
+              else setShowReactionPicker((open) => !open);
+            }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setShowReactionPicker(true);
+            }}
+            className={`btn-ghost w-full ${selectedReaction?.color || ""}`}
+          >
+            {SelectedReactionIcon ? (
+              <SelectedReactionIcon className="h-5 w-5" />
+            ) : (
+              <ThumbsUp className="h-5 w-5" />
+            )}
+            {selectedReaction?.label || "React"}
+          </button>
+          <button
+            onClick={() => setShowReactionPicker((open) => !open)}
+            className="absolute inset-y-0 right-0 w-8"
+            aria-label="Choose reaction"
+          />
+          {showReactionPicker && (
+            <div className="surface absolute bottom-12 left-0 z-20 flex gap-1 p-1.5 shadow-xl">
+              {reactionOptions.map((reaction) => {
+                const ReactionIcon = reaction.Icon;
+                return (
+                  <button
+                    key={reaction.type}
+                    onClick={() => react(reaction.type)}
+                    className="icon-button h-9 w-9 hover:scale-105"
+                    title={reaction.label}
+                  >
+                    <ReactionIcon className={`h-5 w-5 ${reaction.color}`} />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <button onClick={() => setShowComments((open) => !open)} className="btn-ghost w-full">
+          <MessageCircle className="h-5 w-5" />
+          Comment
+        </button>
+        <button onClick={sharePost} className="btn-ghost w-full">
+          <Share2 className="h-5 w-5" />
+          Share
+        </button>
+      </div>
+
+      {showComments && (
+        <section className="border-t border-black/[0.07] p-4 dark:border-white/[0.08]">
+          <div className="space-y-3">
+            {(postData.comments || []).map((comment, index) => (
+              <div key={comment._id || index} className="flex items-start gap-2.5">
+                <img
+                  src={comment.user?.dp || "/default.jpg"}
+                  alt=""
+                  className="avatar h-8 w-8"
+                />
+                <div className="min-w-0 rounded-md bg-[#f2f3f5] px-3 py-2 dark:bg-[#1b1e23]">
+                  <Link
+                    to={`/profile/${comment.user?.username}`}
+                    className="block text-xs font-bold hover:underline"
+                  >
+                    {comment.user?.username || "Unknown user"}
+                  </Link>
+                  <p className="mt-0.5 break-words text-sm text-zinc-700 dark:text-zinc-200">
+                    {comment.text}
+                  </p>
+                </div>
+              </div>
+            ))}
+            {!postData.comments?.length && (
+              <p className="py-3 text-center text-sm text-zinc-500">No comments yet.</p>
+            )}
+          </div>
+
+          {currentUser && (
+            <form onSubmit={submitComment} className="mt-4 flex items-center gap-2.5">
+              <img
+                src={currentUser.dp || "/default.jpg"}
+                alt=""
+                className="avatar h-8 w-8"
+              />
+              <input
+                value={newComment}
+                onChange={(event) => setNewComment(event.target.value)}
+                className="field min-h-10 flex-1 py-2"
+                placeholder="Write a comment"
+              />
+              <button
+                type="submit"
+                disabled={commenting || !newComment.trim()}
+                className="btn-primary min-h-10 px-3"
+              >
+                Post
+              </button>
+            </form>
+          )}
+        </section>
+      )}
+
+      <PostFormModal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        initialPostData={postData}
+        onSubmit={(updatedPost) => {
+          if (updatedPost) setPostData((current) => ({ ...current, ...updatedPost }));
+        }}
+      />
+      <ConfirmModal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
-        onConfirm={handleDelete}
-        title="Delete Post"
-        message="Are you sure you want to delete this post? This action cannot be undone."
+        onConfirm={deletePost}
+        title="Delete post?"
+        message="This post and its reactions will be permanently removed."
       />
       <ReactionListModal
         isOpen={showReactionList}
         onClose={() => setShowReactionList(false)}
         reactions={reactionUsers}
         loading={loadingReactions}
-        iconMap={iconMap}
       />
-    </div>
+    </article>
   );
 }
 
-function ReactionListModal({ isOpen, onClose, reactions, loading, iconMap }) {
+function ReactionListModal({ isOpen, onClose, reactions, loading }) {
   if (!isOpen) return null;
-
   const people = Object.entries(reactions || {}).flatMap(([type, users]) =>
     (users || []).map((user) => ({ ...user, reactionType: type }))
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="w-full max-w-sm overflow-hidden rounded-lg bg-white shadow-xl dark:bg-gray-900">
-        <div className="flex items-center justify-between border-b p-4 dark:border-gray-800">
-          <h2 className="font-semibold">Reactions</h2>
-          <button onClick={onClose} className="rounded-md p-1 hover:bg-gray-100 dark:hover:bg-gray-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4">
+      <div className="surface w-full max-w-sm overflow-hidden shadow-2xl">
+        <header className="flex h-14 items-center justify-between border-b border-black/[0.08] px-4 dark:border-white/[0.09]">
+          <h2 className="font-bold">Reactions</h2>
+          <button onClick={onClose} className="icon-button" title="Close">
             <X className="h-5 w-5" />
           </button>
-        </div>
-        <div className="max-h-96 overflow-y-auto p-2">
+        </header>
+        <div className="max-h-[60vh] overflow-y-auto p-2">
           {loading ? (
-            <div className="space-y-2 p-2 animate-pulse">
+            <div className="space-y-2 p-2">
               {[0, 1, 2].map((item) => (
-                <div key={item} className="h-12 rounded-md bg-gray-100 dark:bg-gray-800" />
+                <div key={item} className="skeleton h-12" />
               ))}
             </div>
           ) : (
-            people.map((user) => (
-              <Link
-                key={`${user._id}-${user.reactionType}`}
-                to={`/profile/${user.username}`}
-                onClick={onClose}
-                className="flex items-center gap-3 rounded-md p-2 hover:bg-gray-50 dark:hover:bg-gray-800"
-              >
-                <img
-                  src={user.dp || "/default.jpg"}
-                  alt=""
-                  className="h-10 w-10 rounded-full object-cover"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">{user.username}</p>
-                  <p className="truncate text-xs text-gray-500">{user.name}</p>
-                </div>
-                {iconMap[user.reactionType]}
-              </Link>
-            ))
+            people.map((user) => {
+              const reaction = reactionOptions.find(
+                (option) => option.type === user.reactionType
+              );
+              const Icon = reaction?.Icon || ThumbsUp;
+              return (
+                <Link
+                  key={`${user._id}-${user.reactionType}`}
+                  to={`/profile/${user.username}`}
+                  onClick={onClose}
+                  className="flex items-center gap-3 rounded-md p-2.5 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                >
+                  <img
+                    src={user.dp || "/default.jpg"}
+                    alt=""
+                    className="avatar h-10 w-10"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-bold">{user.username}</span>
+                    <span className="block truncate text-xs text-zinc-500">{user.name}</span>
+                  </span>
+                  <Icon className={`h-5 w-5 ${reaction?.color || ""}`} />
+                </Link>
+              );
+            })
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function EditPostModal({ isOpen, onClose, post, onSave }) {
-  const [caption, setCaption] = useState("");
-  const [media, setMedia] = useState([]);
-  const [visibility, setVisibility] = useState("public");
-  const [tags, setTags] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-const initialized = useRef(false);
-
-useEffect(() => {
-  if (isOpen && post && !initialized.current) {
-    setCaption(post.caption || "");
-    setVisibility(post.visibility || "public");
-    setTags(post.tags?.join(", ") || "");
-    setMedia(
-      (post.media || []).map((m) => ({
-        preview: m.url,
-        type: m.type,
-        existing: true,
-      }))
-    );
-    initialized.current = true; // prevent future resets
-  }
-}, [isOpen, post]);
-
-// Reset initialized flag when modal closes
-useEffect(() => {
-  if (!isOpen) {
-    initialized.current = false;
-  }
-}, [isOpen]);
-  const handleMediaChange = (e) => {
-    const files = Array.from(e.target.files);
-
-    let images = [];
-    let videos = [];
-
-    for (let file of files) {
-      const type = file.type.startsWith("video") ? "video" : "image";
-      const preview = URL.createObjectURL(file);
-      const formatted = { file, preview, type };
-
-      if (type === "image") images.push(formatted);
-      else if (type === "video") videos.push(formatted);
-    }
-
-    const allMedia = [...media, ...images, ...videos];
-    const imageCount = allMedia.filter((m) => m.type === "image").length;
-    const videoCount = allMedia.filter((m) => m.type === "video").length;
-
-    if (videoCount > 1) return setError("You can only upload 1 video.");
-    if (imageCount > 6) return setError("Max 6 images allowed.");
-    if (videoCount && imageCount)
-      return setError("Cannot upload images and video together.");
-
-    setError("");
-    setMedia(allMedia);
-  };
-
-  const handleRemoveMedia = (index) => {
-    const newMedia = [...media];
-    newMedia.splice(index, 1);
-    setMedia(newMedia);
-  };
-
-  const handleSave = async () => {
-    if (!!error || (!caption && media.length === 0)) return;
-
-    setLoading(true);
-    const formData = new FormData();
-    formData.append("caption", caption);
-    formData.append("visibility", visibility);
-    formData.append("tags", tags);
-
-    media.forEach((m) => {
-      if (!m.existing) formData.append("media", m.file);
-    });
-
-    try {
-      const res = await api.patch(`/post/${post._id}`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      onSave?.(res.data);
-      onClose();
-    } catch (err) {
-      console.error("Update failed:", err.response?.data || err.message);
-      setError(err.response?.data?.error || "Something went wrong.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-2 backdrop-blur-sm bg-black/50">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg p-4 sm:p-6 relative border border-gray-300 dark:border-gray-700">
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 text-gray-400 hover:text-red-500"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        <h2 className="text-xl font-semibold mb-4 text-center text-gray-900 dark:text-white">
-          Edit Post
-        </h2>
-
-        <EmojiTextArea value={caption} onChange={setCaption} />
-
-        {media.length === 1 ? (
-          <div className="mt-4 relative max-h-[50vh] overflow-hidden rounded-lg border border-gray-300 dark:border-gray-700">
-            {media[0].type === "image" ? (
-              <img src={media[0].preview} className="max-h-[50vh] w-auto mx-auto object-contain rounded" />
-            ) : (
-              <video src={media[0].preview} controls className="max-h-[50vh] w-full object-contain rounded" />
-            )}
-            <button
-              onClick={() => handleRemoveMedia(0)}
-              className="absolute top-1 right-1 text-white bg-red-500 rounded-full p-1"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        ) : (
-          <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {media.map((m, i) => (
-              <div key={i} className="relative aspect-square overflow-hidden rounded-lg border border-gray-300 dark:border-gray-700">
-                {m.type === "image" ? (
-                  <img src={m.preview} className="w-full h-full object-cover" />
-                ) : (
-                  <video src={m.preview} controls className="w-full h-full object-cover" />
-                )}
-                <button
-                  onClick={() => handleRemoveMedia(i)}
-                  className="absolute top-1 right-1 text-white bg-red-500 rounded-full p-1"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <input
-          type="file"
-          accept="image/*,video/*"
-          multiple
-          onChange={handleMediaChange}
-          className="mt-4 w-full text-sm text-gray-500 dark:text-gray-400"
-        />
-        {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
-
-        <select
-          value={visibility}
-          onChange={(e) => setVisibility(e.target.value)}
-          className="w-full mt-4 p-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-100 dark:bg-gray-800 text-black dark:text-white"
-        >
-          <option value="public">Public</option>
-          <option value="friends">Friends</option>
-          <option value="private">Private</option>
-        </select>
-
-        <input
-          type="text"
-          placeholder="Tags (comma-separated)"
-          value={tags}
-          onChange={(e) => setTags(e.target.value)}
-          className="w-full mt-4 p-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-100 dark:bg-gray-800 text-black dark:text-white"
-        />
-
-        <button
-          onClick={handleSave}
-          disabled={!!error || (!caption && media.length === 0)}
-          className={`mt-6 w-full ${
-            !!error || (!caption && media.length === 0)
-              ? "bg-gray-400 cursor-not-allowed"
-              : "bg-blue-600 hover:bg-blue-700"
-          } text-white py-2 rounded-lg text-sm font-medium`}
-        >
-          {loading ? "Updating..." : "Save Changes"}
-        </button>
-      </div>
-
-      {loading && (
-        <div className="absolute inset-0 bg-white/80 dark:bg-black/80 flex items-center justify-center rounded-2xl z-50">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          <span className="ml-2 text-gray-700 dark:text-white font-medium">Updating...</span>
-        </div>
-      )}
     </div>
   );
 }

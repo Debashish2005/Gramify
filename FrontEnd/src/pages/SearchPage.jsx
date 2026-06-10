@@ -1,194 +1,162 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Clock3, Search, UserSearch, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import api from "../api/axios";
-import HeaderNav from "../components/header"
-import { useNavigate } from "react-router-dom";
+import HeaderNav from "../components/header";
+import { EmptyState } from "../components/PageState";
 
 export default function SearchPage() {
-    const navigate = useNavigate();
-    const [searchLoading, setSearchLoading] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [recentSearches, setRecentSearches] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef(null);
 
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth >= 768) {
-        navigate("/"); // or any fallback route
-      }
-    };
-
-    handleResize(); // Run on mount
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [navigate]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState([]);
-
-  const inputRef = useRef(null); // 👈 reference to the input
-
-  useEffect(() => {
-    // 👇 Focus input when page loads
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
+    const saved = JSON.parse(localStorage.getItem("recentSearches") || "[]");
+    setRecentSearches(saved);
+    inputRef.current?.focus();
   }, []);
-  useEffect(() => {
-  const saved = localStorage.getItem("theme");
-  if (saved === "dark") {
-    document.documentElement.classList.add("dark");
-  } else {
-    document.documentElement.classList.remove("dark");
-  }
-}, []);
 
- useEffect(() => {
-  const delayDebounce = setTimeout(() => {
-    const fetchUsers = async () => {
-      if (!searchQuery.trim()) {
-        setSearchResults([]);
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (!query.trim()) {
+        setResults([]);
+        setLoading(false);
         return;
       }
 
-      setSearchLoading(true); // Start shimmer
+      setLoading(true);
       try {
-        const res = await api.get(`/search-users?query=${searchQuery}`);
-        setSearchResults(res.data.users);
+        const res = await api.get(`/search-users?query=${encodeURIComponent(query.trim())}`);
+        setResults(res.data.users || []);
       } catch (err) {
         console.error("Search failed", err);
+      } finally {
+        setLoading(false);
       }
-      setSearchLoading(false); // End shimmer
-    };
+    }, 250);
 
-    fetchUsers();
-  }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
 
-  return () => clearTimeout(delayDebounce);
-}, [searchQuery]);
-
-  const [recentSearches, setRecentSearches] = useState([]);
-
-  // Load recent searches on mount
-  useEffect(() => {
-    const history = JSON.parse(localStorage.getItem("recentSearches")) || [];
-    setRecentSearches(history);
-    inputRef.current?.focus(); // Auto-focus on open
-  }, []);
-
-  // Save search on Enter or result click
-  const saveSearch = (query) => {
-    if (!query.trim()) return;
-
-    let history = JSON.parse(localStorage.getItem("recentSearches")) || [];
-    history = [query, ...history.filter(q => q !== query)].slice(0, 5);
-    localStorage.setItem("recentSearches", JSON.stringify(history));
-    setRecentSearches(history);
-  };
-
-  // Clear all history
-  const clearHistory = () => {
-    localStorage.removeItem("recentSearches");
-    setRecentSearches([]);
+  const saveSearch = (username) => {
+    const next = [username, ...recentSearches.filter((item) => item !== username)].slice(0, 6);
+    setRecentSearches(next);
+    localStorage.setItem("recentSearches", JSON.stringify(next));
   };
 
   return (
-    <>
-    <HeaderNav/>
-    <div className="h-[calc(100vh-56px)] bg-white dark:bg-black px-4 py-2 overflow-y-auto">
+    <div className="app-bg pb-20 md:pb-0">
+      <HeaderNav />
+      <main className="page-wrap py-6 sm:py-8">
+        <div className="mx-auto max-w-2xl">
+          <p className="eyebrow">Discover people</p>
+          <h1 className="section-title mt-1">Search</h1>
 
-      {/* Top Search Bar */}
-      <div className="relative mb-4">
-        <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400 dark:text-gray-500">
-          <Search className="w-4 h-4" />
-        </span>
-        <input
-          ref={inputRef} // 👈 attach the ref
-          type="text"
-          placeholder="Search users"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-black dark:text-white"
-        />
-      </div>
-
-{/* Recent Searches (if input is empty) */}
-{searchQuery.trim() === "" && recentSearches.length > 0 && (
-  <div className="mb-4">
-    <div className="flex justify-between items-center mb-2">
-      <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Recent Searches</span>
-      <button
-        onClick={clearHistory}
-        className="text-xs text-red-500 hover:underline"
-      >
-        Clear All
-      </button>
-    </div>
-    <ul className="space-y-2">
-      {recentSearches.map((query, i) => (
-        <li
-          key={i}
-          onClick={() => {
-            setSearchQuery(query);
-            saveSearch(query);
-          }}
-          className="cursor-pointer px-3 py-2 bg-gray-100 dark:bg-gray-500 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition"
-        >
-          {query}
-        </li>
-      ))}
-    </ul>
-  </div>
-)}
-
-      {/* Results */}
-{searchLoading ? (
-  <div className="space-y-4 animate-pulse">
-    {[...Array(5)].map((_, i) => (
-      <div
-        key={i}
-        className="flex items-center gap-3 p-2 rounded-md bg-gray-100 dark:bg-gray-800"
-      >
-        <div className="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-600" />
-        <div className="flex-1 space-y-1">
-          <div className="h-4 w-1/3 bg-gray-300 dark:bg-gray-600 rounded" />
-          <div className="h-3 w-1/4 bg-gray-300 dark:bg-gray-600 rounded" />
-        </div>
-      </div>
-    ))}
-  </div>
-) : (
-  searchResults.length > 0 && (
-    <div className="space-y-2">
-      {searchResults.map((user) => (
-        <Link
-          key={user._id}
-          to={`/profile/${user.username}`}
-          className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-          onClick={() => {
-            saveSearch(user.username);
-            setSearchQuery("");
-            setSearchResults([]);
-          }}
-        >
-          <img
-            src={user.dp || "/default-avatar.png"}
-            alt={user.username}
-            className="w-10 h-10 rounded-full object-cover"
-          />
-          <div>
-            <div className="font-semibold text-sm text-gray-900 dark:text-white">
-              {user.username}
-            </div>
-            <div className="text-xs text-gray-600 dark:text-gray-400">
-              {user.name}
-            </div>
+          <div className="relative mt-5">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="field min-h-12 pl-12 pr-11 text-base"
+              placeholder="Search by name or username"
+            />
+            {query && (
+              <button
+                onClick={() => setQuery("")}
+                className="icon-button absolute right-1 top-1/2 -translate-y-1/2"
+                title="Clear search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
-        </Link>
-      ))}
-    </div>
-  )
-)}
 
-
+          <section className="mt-6">
+            {loading ? (
+              <div className="surface divide-y divide-black/[0.06] p-2 dark:divide-white/[0.08]">
+                {[0, 1, 2, 3].map((item) => (
+                  <div key={item} className="flex items-center gap-3 p-3">
+                    <div className="skeleton h-11 w-11 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <div className="skeleton h-3 w-32" />
+                      <div className="skeleton h-3 w-20" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : query.trim() ? (
+              results.length ? (
+                <div className="surface divide-y divide-black/[0.06] overflow-hidden dark:divide-white/[0.08]">
+                  {results.map((user) => (
+                    <Link
+                      key={user._id}
+                      to={`/profile/${user.username}`}
+                      onClick={() => saveSearch(user.username)}
+                      className="flex items-center gap-3 p-4 transition hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                    >
+                      <img
+                        src={user.dp || "/default-avatar.png"}
+                        alt=""
+                        className="avatar h-12 w-12"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-bold">{user.username}</span>
+                        <span className="block truncate text-sm text-zinc-500">{user.name}</span>
+                      </span>
+                      <span className="text-sm font-semibold text-[#e23d58]">View profile</span>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={UserSearch}
+                  title="No people found"
+                  description={`We could not find anyone matching "${query.trim()}".`}
+                />
+              )
+            ) : recentSearches.length ? (
+              <div className="surface overflow-hidden">
+                <div className="flex items-center justify-between border-b border-black/[0.07] px-4 py-3 dark:border-white/[0.08]">
+                  <span className="flex items-center gap-2 text-sm font-bold">
+                    <Clock3 className="h-4 w-4" />
+                    Recent searches
+                  </span>
+                  <button
+                    onClick={() => {
+                      setRecentSearches([]);
+                      localStorage.removeItem("recentSearches");
+                    }}
+                    className="btn-ghost min-h-8 py-1"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className="p-2">
+                  {recentSearches.map((item) => (
+                    <button
+                      key={item}
+                      onClick={() => setQuery(item)}
+                      className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-semibold hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+                    >
+                      <Clock3 className="h-4 w-4 text-zinc-400" />
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <EmptyState
+                icon={UserSearch}
+                title="Find your people"
+                description="Search by name or username to follow someone or start a conversation."
+              />
+            )}
+          </section>
+        </div>
+      </main>
     </div>
-    </>
   );
 }

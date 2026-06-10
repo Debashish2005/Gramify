@@ -1,44 +1,29 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import Brand from "../components/Brand";
 import api from "../api/axios";
 
 export default function LoadingPage() {
   const navigate = useNavigate();
-    useEffect(() => {
-  const saved = localStorage.getItem("theme");
-  if (saved === "dark") {
-    document.documentElement.classList.add("dark");
-  } else {
-    document.documentElement.classList.remove("dark");
-  }
-}, []);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        await api.get("/me");
-        navigate("/dashboard");
-      } catch (error) {
-        navigate("/login");
-      }
+    let active = true;
+    api
+      .get("/me")
+      .then(() => active && navigate("/dashboard", { replace: true }))
+      .catch(() => active && navigate("/login", { replace: true }));
+    return () => {
+      active = false;
     };
-
-    const timer = setTimeout(() => {
-      checkAuth();
-    }, 1000);
-
-    return () => clearTimeout(timer);
   }, [navigate]);
 
   return (
-    <div className="min-h-screen flex flex-col justify-center items-center bg-white dark:bg-black px-4">
-      <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-purple-500 to-teal-400 font-[cursive]">
-        Gramify
-      </h1>
-
-      <div className="mt-6 w-48 h-2 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
-        <div className="h-full animate-loadingBar bg-gradient-to-r from-pink-500 via-purple-500 to-teal-400" />
+    <div className="app-bg flex min-h-screen flex-col items-center justify-center px-4">
+      <Brand to="/" />
+      <div className="mt-6 h-1 w-36 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/[0.1]">
+        <div className="h-full w-1/2 animate-loadingBar rounded-full bg-[#e23d58]" />
       </div>
+      <p className="mt-3 text-xs font-semibold text-zinc-500">Loading your space</p>
     </div>
   );
 }

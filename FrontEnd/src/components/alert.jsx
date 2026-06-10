@@ -1,12 +1,12 @@
 import { CheckCircle, XCircle, AlertTriangle } from "lucide-react";
 
 export default function Alert({ type = "info", message }) {
-  const baseStyles = "flex items-center gap-2 p-3 rounded-md text-sm mb-4";
+  const baseStyles = "flex items-start gap-2.5 rounded-md border p-3 text-sm";
   const variants = {
-    success: "bg-green-50 text-green-700 border border-green-400",
-    error: "bg-red-50 text-red-700 border border-red-400",
-    warning: "bg-yellow-50 text-yellow-700 border border-yellow-400",
-    info: "bg-blue-50 text-blue-700 border border-blue-400",
+    success: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    error: "border-red-200 bg-red-50 text-red-800",
+    warning: "border-amber-200 bg-amber-50 text-amber-800",
+    info: "border-sky-200 bg-sky-50 text-sky-800",
   };
 
   const icons = {
@@ -19,7 +19,7 @@ export default function Alert({ type = "info", message }) {
   return (
     <div className={`${baseStyles} ${variants[type]}`}>
       {icons[type]}
-      <span>{message}</span>
+      <span className="leading-5">{message}</span>
     </div>
   );
 }

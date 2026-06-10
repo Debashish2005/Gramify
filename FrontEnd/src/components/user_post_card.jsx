@@ -1,105 +1,64 @@
-import React, { useEffect, useState } from "react";
-import { Video, Image, Smile } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ImagePlus, PenLine } from "lucide-react";
 import { Link } from "react-router-dom";
 import api from "../api/axios";
-import PostFormModal from "./PostFormModal"; // Adjust the path
-import toast from "react-hot-toast";
+import PostFormModal from "./PostFormModal";
 
-const PostCard = () => {
+export default function CreatePostComposer({ onCreated }) {
   const [user, setUser] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await api.get("/me");
-        setUser(res.data.user);
-      } catch (err) {
-        console.error("Failed to fetch user", err);
-      }
-    };
-
-    fetchUser();
+    api
+      .get("/me")
+      .then((res) => setUser(res.data.user))
+      .catch((err) => console.error("Failed to load composer user", err));
   }, []);
 
-  if (!user) return null;
-
-  const openModal = () => setIsModalOpen(true);
-  const closeModal = () => setIsModalOpen(false);
-
-  const handleSubmit = (formData) => {
-    // handle form submit here (maybe call backend or set state)
-    console.log("Submitted post data:", formData);
-    // You can also call an API here
-  };
+  if (!user) return <div className="surface skeleton h-20" />;
 
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-8">
-      <div className="w-full max-w-xl mx-auto my-6 bg-white dark:bg-[#1e1e1e] rounded-xl shadow-md border dark:border-gray-700 px-4 py-3 sm:px-6">
-        {/* Top input */}
+    <>
+      <section className="surface p-4">
         <div className="flex items-center gap-3">
           <Link to={`/profile/${user.username}`}>
             <img
               src={user.dp || "/default-avatar.png"}
-              alt="profile"
-              className="w-10 h-10 rounded-full object-cover"
+              alt=""
+              className="avatar h-11 w-11"
             />
           </Link>
-          <input
-            type="text"
-            placeholder={`What's on your mind, ${user.name.split(" ")[0]}?`}
-            onFocus={openModal}
-            readOnly
-            className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition rounded-full px-4 py-2 outline-none text-sm sm:text-base text-gray-800 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-300 cursor-pointer"
-          />
-        </div>
-
-        <hr className="my-3 border-gray-200 dark:border-gray-600" />
-
-        {/* Action buttons */}
-        <div className="flex flex-wrap justify-between gap-2 text-sm font-medium text-gray-600 dark:text-gray-300">
-       <button
-  className="flex items-center space-x-1 hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-1 rounded cursor-pointer text-red-500"
-  onClick={() => toast("Live video coming soon! 🎥", {
-    icon: "🚧",
-    style: {
-      borderRadius: '10px',
-      background: '#333',
-      color: '#fff',
-    },
-  })}
->
-  <Video className="w-5 h-5" />
-  <span>Live video</span>
-</button>
-
-
           <button
-            className="flex items-center space-x-1 hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-1 rounded cursor-pointer text-green-600"
-            onClick={openModal}
+            type="button"
+            onClick={() => setIsOpen(true)}
+            className="flex min-h-11 min-w-0 flex-1 items-center rounded-md bg-[#f2f3f5] px-4 text-left text-sm text-zinc-500 transition hover:bg-[#e9ebee] dark:bg-[#1b1e23] dark:text-zinc-400 dark:hover:bg-[#22252b]"
           >
-            <Image className="w-5 h-5" />
-            <span>Photo/video</span>
+            Share something with your community
           </button>
-
           <button
-            className="flex items-center space-x-1 hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-1 rounded cursor-pointer text-yellow-500"
-            onClick={openModal}
+            type="button"
+            onClick={() => setIsOpen(true)}
+            className="icon-button text-[#e23d58]"
+            title="Add photo or video"
           >
-            <Smile className="w-5 h-5" />
-            <span>Feeling/activity</span>
+            <ImagePlus className="h-5 w-5" />
           </button>
         </div>
-      </div>
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-zinc-500 hover:text-[#e23d58] dark:text-zinc-400"
+        >
+          <PenLine className="h-4 w-4" />
+          Create a post
+        </button>
+      </section>
 
-      {/* Modal */}
       <PostFormModal
-        isOpen={isModalOpen}
-        onClose={closeModal}
-        onSubmit={handleSubmit}
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        onSubmit={onCreated}
       />
-    </div>
+    </>
   );
-};
-
-export default PostCard;
+}
