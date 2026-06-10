@@ -939,6 +939,33 @@ app.get("/profile/:username",auth, async (req, res) => {
   }
 });
 
+app.get("/profile/:username/connections", auth, async (req, res) => {
+  try {
+    const { username } = req.params;
+    const { type } = req.query;
+
+    if (!["followers", "following"].includes(type)) {
+      return res.status(400).json({ error: "Invalid connection type" });
+    }
+
+    const user = await UserModel.findOne({ username })
+      .select(type)
+      .populate(type, "username name dp bio");
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({
+      type,
+      users: (user[type] || []).filter(Boolean),
+    });
+  } catch (err) {
+    console.error("Connections error:", err);
+    res.status(500).json({ error: "Could not load connections" });
+  }
+});
+
 app.get("/user-posts/:username", auth, async (req, res) => {
   try {
     const { username } = req.params;

@@ -38,6 +38,10 @@ export default function ProfilePage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
+  const [connectionsType, setConnectionsType] = useState(null);
+  const [connections, setConnections] = useState([]);
+  const [connectionsLoading, setConnectionsLoading] = useState(false);
+  const [connectionsError, setConnectionsError] = useState("");
   const [selectedPostIndex, setSelectedPostIndex] = useState(null);
   const [isDark, setIsDark] = useState(
     document.documentElement.classList.contains("dark")
@@ -79,6 +83,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     loadProfile();
+    setConnectionsType(null);
   }, [loadProfile]);
 
   useEffect(() => {
@@ -156,6 +161,26 @@ export default function ProfilePage() {
     } finally {
       await loadProfile();
       setActionLoading(false);
+    }
+  };
+
+  const openConnections = async (type) => {
+    setConnectionsType(type);
+    setConnections([]);
+    setConnectionsError("");
+    setConnectionsLoading(true);
+
+    try {
+      const response = await api.get(
+        `/profile/${username}/connections?type=${type}`
+      );
+      setConnections(response.data.users || []);
+    } catch (err) {
+      setConnectionsError(
+        err.response?.data?.error || `Could not load ${type}.`
+      );
+    } finally {
+      setConnectionsLoading(false);
     }
   };
 
@@ -331,14 +356,22 @@ export default function ProfilePage() {
               <span>
                 <strong>{postCount}</strong> <span className="text-zinc-500">posts</span>
               </span>
-              <span>
+              <button
+                type="button"
+                onClick={() => openConnections("followers")}
+                className="text-left transition hover:text-[#e23d58]"
+              >
                 <strong>{profileUser.followers?.length || 0}</strong>{" "}
                 <span className="text-zinc-500">followers</span>
-              </span>
-              <span>
+              </button>
+              <button
+                type="button"
+                onClick={() => openConnections("following")}
+                className="text-left transition hover:text-[#e23d58]"
+              >
                 <strong>{profileUser.following?.length || 0}</strong>{" "}
                 <span className="text-zinc-500">following</span>
-              </span>
+              </button>
             </div>
           </div>
         </section>
@@ -474,6 +507,93 @@ export default function ProfilePage() {
               }}
             />
           </div>
+        </div>
+      )}
+
+      {connectionsType && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 sm:items-center sm:px-4 sm:py-6"
+          onClick={() => setConnectionsType(null)}
+        >
+          <section
+            className="surface flex max-h-[78vh] w-full flex-col overflow-hidden rounded-b-none shadow-2xl sm:max-w-md sm:rounded-md"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="flex h-14 shrink-0 items-center justify-between border-b border-black/[0.08] px-4 dark:border-white/[0.09]">
+              <div>
+                <h2 className="font-bold capitalize">{connectionsType}</h2>
+                <p className="text-xs text-zinc-500">@{profileUser.username}</p>
+              </div>
+              <button
+                onClick={() => setConnectionsType(null)}
+                className="icon-button"
+                title={`Close ${connectionsType}`}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </header>
+
+            <div className="min-h-40 flex-1 overflow-y-auto p-2">
+              {connectionsLoading ? (
+                <div className="space-y-2">
+                  {[0, 1, 2, 3].map((item) => (
+                    <div key={item} className="flex items-center gap-3 p-2">
+                      <div className="skeleton h-11 w-11 rounded-full" />
+                      <div className="flex-1 space-y-2">
+                        <div className="skeleton h-3 w-28" />
+                        <div className="skeleton h-3 w-20" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : connectionsError ? (
+                <div className="px-6 py-12 text-center">
+                  <UserRound className="mx-auto h-7 w-7 text-zinc-400" />
+                  <p className="mt-3 text-sm font-bold">Could not load this list</p>
+                  <p className="mt-1 text-xs text-zinc-500">{connectionsError}</p>
+                  <button
+                    onClick={() => openConnections(connectionsType)}
+                    className="btn-secondary mt-4"
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : connections.length === 0 ? (
+                <div className="px-6 py-12 text-center">
+                  <UserRound className="mx-auto h-7 w-7 text-zinc-400" />
+                  <p className="mt-3 text-sm font-bold">
+                    No {connectionsType} yet
+                  </p>
+                </div>
+              ) : (
+                connections.map((connection) => (
+                  <Link
+                    key={connection._id}
+                    to={`/profile/${connection.username}`}
+                    onClick={() => setConnectionsType(null)}
+                    className="flex items-center gap-3 rounded-md p-3 transition hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+                  >
+                    <img
+                      src={connection.dp || "/default-avatar.png"}
+                      alt=""
+                      className="avatar h-11 w-11"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-bold">
+                        {connection.name}
+                      </span>
+                      <span className="block truncate text-xs text-zinc-500">
+                        @{connection.username}
+                      </span>
+                    </span>
+                    <span className="text-xs font-semibold text-[#e23d58]">
+                      View
+                    </span>
+                  </Link>
+                ))
+              )}
+            </div>
+          </section>
         </div>
       )}
     </div>
