@@ -19,7 +19,17 @@ const UserSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true,
+    default: null,
+  },
+  googleId: {
+    type: String,
+    unique: true,
+    sparse: true,
+  },
+  authProvider: {
+    type: String,
+    enum: ["local", "google", "both"],
+    default: "local",
   },
   dp: {
     type: String, // store image filename or full URL

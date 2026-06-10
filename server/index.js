@@ -14,6 +14,7 @@ const http = require("http");
 const { Server } = require("socket.io"); 
 const Conversation = require("./models/conversation");
 const Message = require("./models/message");
+const { OAuth2Client } = require("google-auth-library");
 
 const app = express();
 const server = http.createServer(app); 
@@ -67,6 +68,52 @@ const upload = multer({ storage });
 // JWT + MongoDB connection
 const JWT_SECRET = process.env.JWT_SECRET;
 const PORT = process.env.PORT || 5000;
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+function createAuthToken(user) {
+  return jwt.sign(
+    { id: user._id, email: user.email, username: user.username },
+    JWT_SECRET,
+    { expiresIn: "1d" }
+  );
+}
+
+function authCookieOptions() {
+  const isProduction = process.env.NODE_ENV === "production";
+
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    maxAge: 24 * 60 * 60 * 1000,
+  };
+}
+
+function setAuthCookie(res, token) {
+  res.cookie("token", token, authCookieOptions());
+}
+
+async function createUniqueUsername(email, name) {
+  const emailPrefix = email.split("@")[0];
+  const fallbackName = name || "gramify_user";
+  const base =
+    (emailPrefix || fallbackName)
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 16) || "gramify_user";
+
+  let username = base;
+  let suffix = 1;
+
+  while (await UserModel.exists({ username })) {
+    const suffixText = String(suffix);
+    username = `${base.slice(0, 20 - suffixText.length)}${suffixText}`;
+    suffix += 1;
+  }
+
+  return username;
+}
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))
@@ -169,26 +216,94 @@ app.post('/login', async (req, res) => {
       return res.status(400).json({ error: "Invalid credentials" });
     }
 
-    // Generate JWT
-    const token = jwt.sign(
-      { id: user._id, email: user.email, username: user.username },
-      JWT_SECRET,
-      { expiresIn: "1d" }
-    );
+    if (!user.password) {
+      return res.status(400).json({
+        error: "This account uses Google sign-in.",
+      });
+    }
 
-res.cookie('token', token, {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production', // true for HTTPS
-  sameSite: 'None',  // allow cross-site cookies
-  maxAge: 24 * 60 * 60 * 1000
-});
+    const token = createAuthToken(user);
+    setAuthCookie(res, token);
 
-res.status(200).json({ message: "Login successful" });
-
+    res.status(200).json({ message: "Login successful" });
 
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/auth/google", async (req, res) => {
+  const { credential } = req.body;
+
+  if (!credential) {
+    return res.status(400).json({ error: "Google credential is required." });
+  }
+
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    return res.status(500).json({ error: "Google authentication is not configured." });
+  }
+
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+
+    if (!payload?.sub || !payload.email || !payload.email_verified) {
+      return res.status(401).json({ error: "Google account could not be verified." });
+    }
+
+    const email = payload.email.toLowerCase();
+    let user = await UserModel.findOne({
+      $or: [{ googleId: payload.sub }, { email }],
+    });
+
+    if (user) {
+      if (user.googleId && user.googleId !== payload.sub) {
+        return res.status(409).json({
+          error: "This email is already linked to another Google account.",
+        });
+      }
+
+      user.googleId = payload.sub;
+      user.authProvider = user.password ? "both" : "google";
+
+      if (!user.dp && payload.picture) {
+        user.dp = payload.picture;
+      }
+
+      await user.save();
+    } else {
+      const username = await createUniqueUsername(email, payload.name);
+
+      user = await UserModel.create({
+        email,
+        name: payload.name || username,
+        username,
+        googleId: payload.sub,
+        authProvider: "google",
+        dp: payload.picture || "",
+      });
+    }
+
+    const token = createAuthToken(user);
+    setAuthCookie(res, token);
+
+    res.status(200).json({
+      message: "Google login successful",
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        username: user.username,
+        dp: user.dp,
+      },
+    });
+  } catch (err) {
+    console.error("Google authentication failed:", err);
+    res.status(401).json({ error: "Invalid or expired Google credential." });
   }
 });
 
@@ -231,6 +346,7 @@ app.post("/reset-password", async (req, res) => {
   }
 
   user.password = await bcrypt.hash(password, 10); // hash new password
+  user.authProvider = user.googleId ? "both" : "local";
   user.resetToken = undefined;
   user.resetTokenExpiry = undefined;
   await user.save();
@@ -595,11 +711,8 @@ app.delete("/post/:id", auth, async (req, res) => {
 });
 
 app.post("/logout", (req, res) => {
-  res.clearCookie("token", {
-    httpOnly: true,
-    secure: true, // only if using HTTPS
-    sameSite: "Strict", // or "Lax" depending on your needs
-  });
+  const { maxAge, ...cookieOptions } = authCookieOptions();
+  res.clearCookie("token", cookieOptions);
   res.status(200).json({ message: "Logged out successfully" });
 });
 

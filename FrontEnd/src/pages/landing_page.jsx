@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
 import Footer from "../components/footer";
-import React from 'react';
-import {BrowserRouter, Routes, Route, Link, useNavigate} from 'react-router-dom';
-import Cookies from 'js-cookie';
+import { Link, useNavigate } from 'react-router-dom';
 import Alert from "../components/alert";
 import api from "../api/axios";
+import GoogleAuthButton from "../components/GoogleAuthButton";
 
 function Input({ type, placeholder, className = '', value, onChange, name, required }) {
   return (
@@ -94,24 +93,24 @@ function handleChange(e) {
         <div className="hidden md:flex flex-col justify-center items-start px-16 py-10 bg-gradient-to-br from-teal-300 to-pink-400 relative overflow-hidden">
  <div className='flex justify-center align-center items-center'>
           <div>
-           <motion.h1
+           <Motion.h1
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1 }}
             className="text-white text-6xl font-extrabold mb-4 z-10"
           >
             Welcome to Gramify
-          </motion.h1>
-          <motion.p
+          </Motion.h1>
+          <Motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5, duration: 1 }}
             className="text-white text-lg z-10 mb-6 max-w-md"
           >
             Gramify is your vibrant digital diary. Snap, post, and share your moments with the world. Connect, explore, and be inspired.
-          </motion.p>
+          </Motion.p>
 
-          <motion.div
+          <Motion.div
             className="text-white text-xl font-semibold space-y-3 z-10"
             initial="hidden"
             animate="visible"
@@ -124,19 +123,19 @@ function handleChange(e) {
             }}
           >
             {["Snap your life", "Connect with friends", "Explore colorful stories"].map((line, i) => (
-              <motion.div
+              <Motion.div
                 key={i}
                 initial={{ opacity: 0, x: -50 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 1, delay: i * 1 }}
               >
                 {line}
-              </motion.div>
+              </Motion.div>
             ))}
-          </motion.div>
+          </Motion.div>
          </div>
 
-   <motion.img
+   <Motion.img
   src="/img1.jpg"
   alt="App preview"
   className="w-[300px] mt-10 rounded-xl shadow-2xl z-10"
@@ -152,6 +151,14 @@ function handleChange(e) {
         {/* Right Section */}
         <div className="flex flex-col justify-center items-center p-10 bg-white z-10 border-t border-gray-100">
           <h2 className="text-4xl font-bold text-pink-600 mb-6">Login to Gramify</h2>
+          <div className="w-full max-w-sm mb-4">
+            <GoogleAuthButton text="signin_with" />
+          </div>
+          <div className="flex items-center w-full max-w-sm mb-4">
+            <div className="flex-1 border-t border-gray-300"></div>
+            <span className="px-3 text-sm text-gray-500">OR</span>
+            <div className="flex-1 border-t border-gray-300"></div>
+          </div>
       <form className="flex flex-col items-center w-full max-w-sm" onSubmit={handleSubmit}>
       <Input
         type="text"
